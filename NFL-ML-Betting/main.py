@@ -57,11 +57,25 @@ def load_best_spread_model():
         print(f"Warning: Model directory not found in any of these locations:")
         for dir_path in possible_dirs:
             print(f"  - {dir_path}")
+        print("Please train spread models first by running:")
+        print("  python src/Train-Models/XGBoost_Model_Spread.py")
         return None
     
-    # Find all spread models
-    pattern = f"XGBoost_*_MAE_Spread.json"
-    model_files = glob.glob(os.path.join(model_dir, pattern))
+    # Find all spread models - try different patterns
+    patterns = [
+        "XGBoost_*_MAE_Spread.json",
+        "XGBoost_*%_Spread.json", 
+        "*Spread*.json",
+        "*spread*.json"
+    ]
+    
+    model_files = []
+    for pattern in patterns:
+        files = glob.glob(os.path.join(model_dir, pattern))
+        model_files.extend(files)
+    
+    # Remove duplicates
+    model_files = list(set(model_files))
     
     if not model_files:
         print(f"Warning: No spread models found in {model_dir}")
@@ -69,38 +83,55 @@ def load_best_spread_model():
         all_models = glob.glob(os.path.join(model_dir, "*.json"))
         for model in all_models:
             print(f"  - {os.path.basename(model)}")
+        print("\nTo create spread models, run:")
+        print("  python src/Train-Models/XGBoost_Model_Spread.py")
         return None
     
     # Sort by MAE (lower is better) and get the best one
     def extract_mae(filename):
         try:
             basename = os.path.basename(filename)
-            # Extract MAE from filename like "XGBoost_0.9_MAE_Spread.json"
-            mae_str = basename.split('_')[1]
-            return float(mae_str)
+            # Try to extract MAE from filename like "XGBoost_0.9_MAE_Spread.json"
+            if '_MAE_' in basename:
+                mae_str = basename.split('_')[1]
+                return float(mae_str)
+            else:
+                # If no MAE in filename, try to extract accuracy percentage
+                if '%' in basename:
+                    acc_str = basename.split('_')[1].replace('%', '')
+                    return float(acc_str)  # Higher accuracy is better, so we'll invert this
+                else:
+                    return float('inf')
         except:
             return float('inf')
     
     # Sort models by MAE and show all available options
     sorted_models = sorted(model_files, key=extract_mae)
-    print(f"Available spread models (sorted by MAE):")
+    print(f"Available spread models (sorted by performance):")
     for i, model in enumerate(sorted_models):
         mae = extract_mae(model)
-        status = " [BEST]" if i == 0 else ""
-        print(f"  {i+1}. {os.path.basename(model)} (MAE: {mae:.1f}){status}")
+        if mae != float('inf'):
+            status = " [BEST]" if i == 0 else ""
+            print(f"  {i+1}. {os.path.basename(model)} (Score: {mae:.1f}){status}")
+        else:
+            status = " [BEST]" if i == 0 else ""
+            print(f"  {i+1}. {os.path.basename(model)}{status}")
     
     best_model = sorted_models[0]
-    best_mae = extract_mae(best_model)
+    best_score = extract_mae(best_model)
     
-    print(f"\nLoading best spread model: {os.path.basename(best_model)} (MAE: {best_mae:.1f})")
+    print(f"\nLoading best spread model: {os.path.basename(best_model)}")
+    if best_score != float('inf'):
+        print(f"Model performance score: {best_score:.1f}")
     
     try:
         booster = xgb.Booster()
         booster.load_model(best_model)
-        print(f"Successfully loaded spread model with MAE: {best_mae:.1f}")
+        print(f"Successfully loaded spread model: {os.path.basename(best_model)}")
         return booster
     except Exception as e:
         print(f"Error loading spread model {best_model}: {e}")
+        print("Please ensure the model file is valid and try training a new model.")
         return None
 
 def load_best_uo_model():

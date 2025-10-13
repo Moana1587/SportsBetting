@@ -93,6 +93,9 @@ def parse_cfb_predictions(stdout):
         
         game_key = f"{away_team}:{home_team}"
         
+        # Format the recommended bet with only spread value
+        formatted_bet = f"{recommended_team} {spread_value}"
+        
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
@@ -100,7 +103,10 @@ def parse_cfb_predictions(stdout):
             'spread_value': spread_value,
             'confidence': f"{confidence}%",
             'sport': 'CFB',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team} {spread_value}, confidence: {confidence}%"
+            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}%",
+            'spread_prediction': f"{recommended_team} {spread_value}",
+            'spread_line': spread_value,
+            'spread_confidence': f"{confidence}%"
         }
     
     # Also look for format without parentheses: "Team A vs Team B, recommended bet: Team C spread_value, confidence: X.X%"
@@ -116,6 +122,9 @@ def parse_cfb_predictions(stdout):
             
             game_key = f"{away_team}:{home_team}"
             
+            # Format the recommended bet with only spread value
+            formatted_bet = f"{recommended_team} {spread_value}"
+            
             games[game_key] = {
                 'away_team': away_team,
                 'home_team': home_team,
@@ -123,7 +132,10 @@ def parse_cfb_predictions(stdout):
                 'spread_value': spread_value,
                 'confidence': f"{confidence}%",
                 'sport': 'CFB',
-                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team} {spread_value}, confidence: {confidence}%"
+                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}%",
+                'spread_prediction': f"{recommended_team} {spread_value}",
+                'spread_line': spread_value,
+                'spread_confidence': f"{confidence}%"
             }
     
     # If no recommended bet format found, try parsing the detailed sections
@@ -425,14 +437,20 @@ def parse_mlb_predictions(stdout):
         else:
             bet_category = "other"
         
+        # Round confidence for better readability
+        confidence_rounded = round(float(confidence), 1)
+        
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
             'recommended_bet': bet_description,
-            'confidence': f"{confidence}%",
+            'confidence': f"{confidence_rounded}%",
             'bet_category': bet_category,
             'sport': 'MLB',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence}%"
+            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence_rounded}%",
+            'spread_prediction': bet_description if bet_category == "spread" else None,
+            'spread_line': bet_description.split()[-1] if bet_category == "spread" and '+' in bet_description or '-' in bet_description else None,
+            'spread_confidence': f"{confidence_rounded}%" if bet_category == "spread" else None
         }
     
     # 2. Look for JSON format from XGBoost_Runner.py
@@ -458,23 +476,38 @@ def parse_mlb_predictions(stdout):
                     spread = pred['recommended_bet']['spread']
                     confidence = pred['recommended_bet']['confidence']
                     
+                    # Round values for better readability
+                    confidence_rounded = round(float(confidence), 1)
+                    ou_confidence_rounded = round(float(pred['over_under']['confidence']), 1)
+                    ou_value_rounded = round(float(pred['over_under']['line']), 1)
+                    spread_rounded = round(float(spread), 1) if spread is not None else None
+                    
                     # Create bet description
                     if bet_type == "ML":
                         bet_description = f"{recommended_team} ML"
                     else:
-                        bet_description = f"{recommended_team} {bet_type} {spread}"
+                        bet_description = f"{recommended_team} {bet_type} {spread_rounded}"
+                    
+                    # Format the recommended bet with only spread value
+                    if spread_rounded is not None:
+                        formatted_bet = f"{recommended_team} {spread_rounded}"
+                    else:
+                        formatted_bet = f"{recommended_team}"
                     
                     games[game_key] = {
                         'away_team': away_team,
                         'home_team': home_team,
                         'recommended_bet': bet_description,
-                        'confidence': f"{confidence}%",
+                        'confidence': f"{confidence_rounded}%",
                         'bet_category': bet_type.lower(),
                         'sport': 'MLB',
-                        'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence}%",
+                        'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence_rounded}%",
+                        'spread_prediction': f"{recommended_team} {bet_type} {spread_rounded}" if bet_type != "ML" else None,
+                        'spread_line': str(spread_rounded) if bet_type != "ML" else None,
+                        'spread_confidence': f"{confidence_rounded}%" if bet_type != "ML" else None,
                         'ou_prediction': pred['over_under']['prediction'],
-                        'ou_value': pred['over_under']['line'],
-                        'ou_confidence': f"{pred['over_under']['confidence']}%"
+                        'ou_value': str(ou_value_rounded),
+                        'ou_confidence': f"{ou_confidence_rounded}%"
                     }
             except Exception as e:
                 print(f"Error parsing MLB JSON output: {e}")
@@ -501,14 +534,20 @@ def parse_mlb_predictions(stdout):
             else:
                 bet_category = "other"
             
+            # Round confidence for better readability
+            confidence_rounded = round(float(confidence), 1)
+            
             games[game_key] = {
                 'away_team': away_team,
                 'home_team': home_team,
                 'recommended_bet': bet_description,
-                'confidence': f"{confidence}%",
+                'confidence': f"{confidence_rounded}%",
                 'bet_category': bet_category,
                 'sport': 'MLB',
-                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence}%"
+                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence_rounded}%",
+                'spread_prediction': bet_description if bet_category == "spread" else None,
+                'spread_line': bet_description.split()[-1] if bet_category == "spread" and ('+' in bet_description or '-' in bet_description) else None,
+                'spread_confidence': f"{confidence_rounded}%" if bet_category == "spread" else None
             }
     
     # 4. If no simple format found, try the original complex parsing and create summary
@@ -575,10 +614,42 @@ def parse_mlb_predictions(stdout):
                 elif game_dict['home_confidence']:
                     main_confidence = game_dict['home_confidence']
             
+            # Round confidence values for better readability
+            if game_dict.get('ou_confidence'):
+                try:
+                    game_dict['ou_confidence'] = f"{round(float(game_dict['ou_confidence']), 1)}%"
+                except (ValueError, TypeError):
+                    pass
+            
+            if game_dict.get('away_confidence'):
+                try:
+                    game_dict['away_confidence'] = f"{round(float(game_dict['away_confidence']), 1)}%"
+                except (ValueError, TypeError):
+                    pass
+                    
+            if game_dict.get('home_confidence'):
+                try:
+                    game_dict['home_confidence'] = f"{round(float(game_dict['home_confidence']), 1)}%"
+                except (ValueError, TypeError):
+                    pass
+            
+            # Round main confidence
+            try:
+                main_confidence_rounded = round(float(main_confidence), 1)
+            except (ValueError, TypeError):
+                main_confidence_rounded = main_confidence
+            
+            # Round OU value for better readability
+            if game_dict.get('ou_value'):
+                try:
+                    game_dict['ou_value'] = str(round(float(game_dict['ou_value']), 1))
+                except (ValueError, TypeError):
+                    pass
+            
             # Add the comprehensive summary
-            game_dict['raw_prediction'] = f"{away_team} vs {home_team}, recommended bet: {main_recommendation}, confidence: {main_confidence}%"
+            game_dict['raw_prediction'] = f"{away_team} vs {home_team}, recommended bet: {main_recommendation}, confidence: {main_confidence_rounded}%"
             game_dict['recommended_bet'] = main_recommendation
-            game_dict['confidence'] = f"{main_confidence}%"
+            game_dict['confidence'] = f"{main_confidence_rounded}%"
             game_dict['all_recommendations'] = recommendations
 
             games[game_key] = game_dict
@@ -616,7 +687,7 @@ def fetch_nba_predictions(ttl_hash=None):
         
         return parse_nba_predictions(result.stdout)
     except subprocess.TimeoutExpired:
-        print("NBA command timed out after 120 seconds")
+        print("NBA command timed out after 20 seconds")
         return {}
     except Exception as e:
         print(f"Error fetching NBA predictions: {e}")
@@ -700,11 +771,24 @@ def parse_nba_predictions(stdout):
             elif game_dict['home_confidence']:
                 main_confidence = game_dict['home_confidence']
         
+        # Format the recommended bet with only spread value
+        spread_value = 'N/A'  # NBA typically doesn't have spread values in this format
+        
+        if main_recommendation:
+            formatted_bet = main_recommendation
+        else:
+            formatted_bet = 'N/A'
+        
         # Add comprehensive summary
-        game_dict['raw_prediction'] = f"{away_team} vs {home_team}, recommended bet: {main_recommendation}, confidence: {main_confidence}%"
+        game_dict['raw_prediction'] = f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {main_confidence}%"
         game_dict['recommended_bet'] = main_recommendation
         game_dict['confidence'] = f"{main_confidence}%"
         game_dict['all_recommendations'] = recommendations
+        
+        # Add spread information if available
+        if game_dict.get('ou_pick') and game_dict.get('ou_value'):
+            game_dict['ou_prediction'] = f"{game_dict['ou_pick']} {game_dict['ou_value']}"
+            game_dict['ou_confidence'] = f"{game_dict['ou_confidence']}%" if game_dict.get('ou_confidence') else None
 
         games[game_key] = game_dict
     
@@ -756,32 +840,41 @@ def parse_nfl_predictions(stdout):
         return {}
     
     # 1. Look for the TEXT_OUTPUT format from XGBoost_Runner.py
-    text_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<bet_type>[\w]+) \((?P<spread>[+-]?[\d.]+)\), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+    # New format: "Team A vs Team B, recommended bet: Team C ou_value,spread_value, confidence: X.X%"
+    text_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<ou_value>[\d.]+),(?P<spread_value>[+-]?[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
     
     for match in text_pattern.finditer(stdout):
         home_team = match.group('home_team').strip()
         away_team = match.group('away_team').strip()
         recommended_team = match.group('recommended_team').strip()
-        bet_type = match.group('bet_type').strip()
-        spread = match.group('spread').strip()
+        ou_value = match.group('ou_value').strip()
+        spread_value = match.group('spread_value').strip()
         confidence = match.group('confidence').strip()
         
         game_key = f"{away_team}:{home_team}"
         
-        # Create bet description
-        if bet_type == "ML":
-            bet_description = f"{recommended_team} ML"
-        else:
-            bet_description = f"{recommended_team} {bet_type} {spread}"
+        # Create bet description - this is typically ML since the format shows ou_value,spread_value
+        bet_description = f"{recommended_team} ML"
+        
+        # Round the values for better readability
+        spread_value_rounded = round(float(spread_value), 2)
+        confidence_rounded = round(float(confidence), 1)
+        ou_value_rounded = round(float(ou_value), 1)
         
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
             'recommended_bet': bet_description,
-            'confidence': f"{confidence}%",
-            'bet_category': bet_type.lower(),
+            'confidence': f"{confidence_rounded}%",
+            'bet_category': 'moneyline',
             'sport': 'NFL',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence}%"
+            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team} {spread_value_rounded}, confidence: {confidence_rounded}%",
+            'spread_prediction': f"{recommended_team} {spread_value_rounded}",
+            'spread_line': str(spread_value_rounded),
+            'spread_confidence': f"{confidence_rounded}%",
+            'ou_prediction': f"OVER {ou_value_rounded}",
+            'ou_value': str(ou_value_rounded),
+            'ou_confidence': f"{confidence_rounded}%"
         }
     
     # 2. Look for JSON format from XGBoost_Runner.py
@@ -813,17 +906,45 @@ def parse_nfl_predictions(stdout):
                     else:
                         bet_description = f"{recommended_team} {bet_type} {spread}"
                     
+                    # Format the recommended bet with ou value,spread value style
+                    ou_value = pred['over_under']['line']
+                    spread_value = spread if bet_type != "ML" else None
+                    
+                    # Format with only spread_value (no ou_value)
+                    if spread_value is not None:
+                        formatted_bet = f"{recommended_team} {spread_value}"
+                    else:
+                        # If no spread value, use the predicted spread from spread_analysis
+                        predicted_spread = pred.get('spread_analysis', {}).get('predicted', 0)
+                        formatted_bet = f"{recommended_team} {predicted_spread}"
+                    
+                    # Extract spread analysis data
+                    spread_analysis = pred.get('spread_analysis', {})
+                    predicted_spread = spread_analysis.get('predicted', 0)
+                    actual_spread = spread_analysis.get('actual', 0)
+                    spread_confidence = spread_analysis.get('confidence', 0)
+                    
+                    # Round the values for better readability
+                    confidence_rounded = round(float(confidence), 1)
+                    predicted_spread_rounded = round(float(predicted_spread), 2) if predicted_spread != 0 else 0
+                    spread_confidence_rounded = round(float(spread_confidence), 1) if spread_confidence != 0 else 0
+                    ou_value_rounded = round(float(pred['over_under']['line']), 1)
+                    ou_confidence_rounded = round(float(pred['over_under']['confidence']), 1)
+                    
                     games[game_key] = {
                         'away_team': away_team,
                         'home_team': home_team,
                         'recommended_bet': bet_description,
-                        'confidence': f"{confidence}%",
+                        'confidence': f"{confidence_rounded}%",
                         'bet_category': bet_type.lower(),
                         'sport': 'NFL',
-                        'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence}%",
+                        'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence_rounded}%",
+                        'spread_prediction': f"{recommended_team} {predicted_spread_rounded}" if predicted_spread_rounded != 0 else None,
+                        'spread_line': str(predicted_spread_rounded) if predicted_spread_rounded != 0 else None,
+                        'spread_confidence': f"{spread_confidence_rounded}%" if spread_confidence_rounded != 0 else None,
                         'ou_prediction': pred['over_under']['prediction'],
-                        'ou_value': pred['over_under']['line'],
-                        'ou_confidence': f"{pred['over_under']['confidence']}%"
+                        'ou_value': str(ou_value_rounded),
+                        'ou_confidence': f"{ou_confidence_rounded}%"
                     }
             except Exception as e:
                 print(f"Error parsing NFL JSON output: {e}")
@@ -849,14 +970,21 @@ def parse_nfl_predictions(stdout):
                 bet_description = f"{recommended_team} {bet_type}"
                 bet_category = "other"
             
+            # Round the values for better readability
+            confidence_rounded = round(float(confidence), 1)
+            bet_type_rounded = round(float(bet_type), 2) if '+' in bet_type or '-' in bet_type else bet_type
+            
             games[game_key] = {
                 'away_team': away_team,
                 'home_team': home_team,
                 'recommended_bet': bet_description,
-                'confidence': f"{confidence}%",
+                'confidence': f"{confidence_rounded}%",
                 'bet_category': bet_category,
                 'sport': 'NFL',
-                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence}%"
+                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence_rounded}%",
+                'spread_prediction': bet_description if bet_category == "spread" else None,
+                'spread_line': str(bet_type_rounded) if bet_category == "spread" else None,
+                'spread_confidence': f"{confidence_rounded}%" if bet_category == "spread" else None
             }
     
     # 4. If no simple format found, try the original NFL parsing
@@ -961,10 +1089,42 @@ def parse_nfl_predictions(stdout):
                 elif game_dict['home_confidence']:
                     main_confidence = game_dict['home_confidence']
             
+            # Round confidence values for better readability
+            if game_dict.get('ou_confidence'):
+                try:
+                    game_dict['ou_confidence'] = f"{round(float(game_dict['ou_confidence']), 1)}%"
+                except (ValueError, TypeError):
+                    pass
+            
+            if game_dict.get('away_confidence'):
+                try:
+                    game_dict['away_confidence'] = f"{round(float(game_dict['away_confidence']), 1)}%"
+                except (ValueError, TypeError):
+                    pass
+                    
+            if game_dict.get('home_confidence'):
+                try:
+                    game_dict['home_confidence'] = f"{round(float(game_dict['home_confidence']), 1)}%"
+                except (ValueError, TypeError):
+                    pass
+            
+            # Round main confidence
+            try:
+                main_confidence_rounded = round(float(main_confidence), 1)
+            except (ValueError, TypeError):
+                main_confidence_rounded = main_confidence
+            
+            # Round OU value for better readability
+            if game_dict.get('ou_value'):
+                try:
+                    game_dict['ou_value'] = str(round(float(game_dict['ou_value']), 1))
+                except (ValueError, TypeError):
+                    pass
+            
             # Add comprehensive summary
-            game_dict['raw_prediction'] = f"{away_team} vs {home_team}, recommended bet: {main_recommendation}, confidence: {main_confidence}%"
+            game_dict['raw_prediction'] = f"{away_team} vs {home_team}, recommended bet: {main_recommendation}, confidence: {main_confidence_rounded}%"
             game_dict['recommended_bet'] = main_recommendation
-            game_dict['confidence'] = f"{main_confidence}%"
+            game_dict['confidence'] = f"{main_confidence_rounded}%"
             game_dict['all_recommendations'] = recommendations
 
             games[game_key] = game_dict
@@ -1017,30 +1177,81 @@ def parse_nhl_predictions(stdout):
     if "No games available" in stdout or "No upcoming games found" in stdout or "No games found for today" in stdout:
         return {}
     
-    # Look for the simple format: "Team A vs Team B, recommended bet: Team A OVER 5.5, confidence: 51.3%"
-    simple_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<bet_type>OVER|UNDER) (?P<bet_value>[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+    # Look for the new TXT Export format: "Team A vs Team B, recommended bet: Team C OU_VALUE,SPREAD_VALUE, confidence: Y.Y%"
+    txt_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<ou_value>[\d.]+),(?P<spread_value>[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
     
-    for match in simple_pattern.finditer(stdout):
-        away_team = match.group('away_team').strip()
+    for match in txt_pattern.finditer(stdout):
         home_team = match.group('home_team').strip()
+        away_team = match.group('away_team').strip()
         recommended_team = match.group('recommended_team').strip()
-        bet_type = match.group('bet_type').strip()
-        bet_value = match.group('bet_value').strip()
+        ou_value = match.group('ou_value').strip()
+        spread_value = match.group('spread_value').strip()
         confidence = match.group('confidence').strip()
         
         game_key = f"{away_team}:{home_team}"
         
-        bet_description = f"{recommended_team} {bet_type} {bet_value}"
+        # Round the values for better readability
+        ou_value_rounded = round(float(ou_value), 1)
+        spread_value_rounded = round(float(spread_value), 1)
+        confidence_rounded = round(float(confidence), 1)
+        
+        # Create bet description - this is typically ML since the format shows ou_value,spread_value
+        bet_description = f"{recommended_team} ML"
+        
+        # Format the recommended bet with only spread value
+        formatted_bet = f"{recommended_team} {spread_value_rounded}"
         
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
             'recommended_bet': bet_description,
-            'confidence': f"{confidence}%",
-            'bet_category': "over_under",
+            'confidence': f"{confidence_rounded}%",
+            'bet_category': 'moneyline',
             'sport': 'NHL',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {bet_description}, confidence: {confidence}%"
+            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence_rounded}%",
+            'spread_prediction': f"{recommended_team} {spread_value_rounded}",
+            'spread_line': str(spread_value_rounded),
+            'spread_confidence': f"{confidence_rounded}%",
+            'ou_prediction': f"OVER {ou_value_rounded}",
+            'ou_value': str(ou_value_rounded),
+            'ou_confidence': f"{confidence_rounded}%"
         }
+    
+    # If no TXT format found, look for the old simple format: "Team A vs Team B, recommended bet: Team A OVER 5.5, confidence: 51.3%"
+    if not games:
+        simple_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<bet_type>OVER|UNDER) (?P<bet_value>[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+        
+        for match in simple_pattern.finditer(stdout):
+            away_team = match.group('away_team').strip()
+            home_team = match.group('home_team').strip()
+            recommended_team = match.group('recommended_team').strip()
+            bet_type = match.group('bet_type').strip()
+            bet_value = match.group('bet_value').strip()
+            confidence = match.group('confidence').strip()
+            
+            game_key = f"{away_team}:{home_team}"
+            
+            # Round the values for better readability
+            bet_value_rounded = round(float(bet_value), 1)
+            confidence_rounded = round(float(confidence), 1)
+            
+            bet_description = f"{recommended_team} {bet_type} {bet_value_rounded}"
+            
+            # Format the recommended bet with only spread value
+            formatted_bet = f"{recommended_team} {bet_value_rounded}"
+            
+            games[game_key] = {
+                'away_team': away_team,
+                'home_team': home_team,
+                'recommended_bet': bet_description,
+                'confidence': f"{confidence_rounded}%",
+                'bet_category': "over_under",
+                'sport': 'NHL',
+                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence_rounded}%",
+                'ou_prediction': f"{bet_type} {bet_value_rounded}",
+                'ou_value': str(bet_value_rounded),
+                'ou_confidence': f"{confidence_rounded}%"
+            }
     
     # If no simple format found, try the original complex parsing and create summary
     if not games:

@@ -234,23 +234,18 @@
                                         {% endif %}
                                     </div>
 
-                                    <!-- Recommended Bet -->
+                                    <!-- Betting Information -->
                                     <div class="col-md-8">
+                                        <!-- Main Recommended Bet -->
                                         {% if game.raw_prediction %}
-                                        <div class="alert alert-success text-center">
+                                        <div class="alert alert-success text-center mb-3">
                                             <h5 class="alert-heading mb-3">
                                                 <i class="fas fa-star me-2"></i>Recommended Bet
                                             </h5>
                                             <p class="mb-0 fs-5 fw-bold">{{ game.raw_prediction }}</p>
                                         </div>
-                                        {% else %}
-                                        <div class="alert alert-secondary text-center">
-                                            <h5 class="alert-heading mb-3">
-                                                <i class="fas fa-info-circle me-2"></i>No Recommendation Available
-                                            </h5>
-                                            <p class="mb-0">No betting recommendation for this game</p>
-                                        </div>
                                         {% endif %}
+
                                     </div>
                                 </div>
                             </div>

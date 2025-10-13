@@ -574,10 +574,34 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
                         ou_pick = "UNDER"
                         ou_confidence = round(abs(ou_pred - ou_value) / ou_value * 100, 1)
                 
-                # Create the formatted line with team name and OU prediction
-                # Use ML confidence (against spread/moneyline) instead of OU confidence
+                # Get spread prediction
+                spread_winner = away_team  # Default
+                spread_value = 1.5  # Default
+                spread_confidence = 50.0  # Default
+                
+                if 'spread_predictions' in prediction_results and i < len(prediction_results['spread_predictions']):
+                    spread_pred = prediction_results['spread_predictions'][i]
+                    # Handle array conversion - the prediction is a numpy array from XGBoost
+                    if hasattr(spread_pred, '__len__') and len(spread_pred) > 0:
+                        spread_pred = spread_pred[0] if hasattr(spread_pred, '__len__') else float(spread_pred)
+                    else:
+                        spread_pred = float(spread_pred)
+                    
+                    # Get spread value
+                    spread_value = todays_games_spread[i] if i < len(todays_games_spread) else 1.5
+                    
+                    # Determine spread winner based on prediction vs actual spread
+                    if spread_pred > spread_value:
+                        spread_winner = home_team
+                        spread_confidence = round(abs(spread_pred - spread_value) / abs(spread_value) * 100, 1) if spread_value != 0 else 50.0
+                    else:
+                        spread_winner = away_team
+                        spread_confidence = round(abs(spread_pred - spread_value) / abs(spread_value) * 100, 1) if spread_value != 0 else 50.0
+                
+                # Create the formatted line with team name, OU prediction, and spread value
+                # Format: "Team A vs Team B, recommended bet: Team C OU_VALUE,SPREAD_VALUE, confidence: X.X%"
                 ml_confidence_pct = round(ml_confidence * 100, 1)
-                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner} {ou_pick} {ou_value}, confidence: {ml_confidence_pct}%"
+                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner} {ou_value},{spread_value}, confidence: {ml_confidence_pct}%"
                 txt_lines.append(line)
         
         # Write to TXT file

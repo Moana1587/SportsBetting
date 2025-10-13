@@ -130,12 +130,14 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
                 
                 # Make spread prediction
                 prediction = spread_model.predict(xgb.DMatrix(np.array([feature_data])))
-                spread_predictions_array.append(prediction[0])
+                spread_predictions_array.append(float(prediction[0]))
+                print(f"  Game {i+1}: Predicted spread = {prediction[0]:.2f}")
         else:
             print("Warning: No spread model available, using default spread values")
             spread_predictions_array = [0.0] * len(games)
     except Exception as e:
         print(f"Error making spread predictions: {e}")
+        print("Using default spread values as fallback")
         spread_predictions_array = [0.0] * len(games)
 
     # Prepare OU data with same feature selection as ML data
@@ -225,6 +227,22 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
             recommended_team = away_team
             bet_type = "ML"
         
+        # Determine if we should recommend a spread bet instead of ML
+        # If the spread prediction is significantly different from the actual spread,
+        # and we have high confidence, recommend the spread bet
+        spread_edge = abs(predicted_spread - actual_spread)
+        if spread_edge > 1.0 and spread_confidence > 60:  # Significant edge and high confidence
+            if predicted_spread > actual_spread:  # Home team is undervalued
+                if winner == 1:  # Home team wins
+                    recommended_team = home_team
+                    bet_type = "Spread"
+                    winner_confidence_pct = spread_confidence
+            else:  # Away team is undervalued
+                if winner == 0:  # Away team wins
+                    recommended_team = away_team
+                    bet_type = "Spread"
+                    winner_confidence_pct = spread_confidence
+        
         # Create structured data with proper type conversion for JSON serialization
         game_prediction = {
             "game": f"{home_team} vs {away_team}",
@@ -279,7 +297,20 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
     # 3. Simple text format (for basic text processing)
     print("===TEXT_OUTPUT_START===")
     for pred in predictions_data:
-        print(f"{pred['game']}, recommended bet: {pred['recommended_bet']['team']} {pred['recommended_bet']['type']} ({pred['recommended_bet']['spread']}), confidence: {pred['recommended_bet']['confidence']}%")
+        # Format the recommended bet with ou value,spread value style
+        ou_value = pred['over_under']['line']
+        spread_value = pred['recommended_bet']['spread']
+        
+        if pred['recommended_bet']['type'] == "ML":
+            formatted_bet = f"{pred['recommended_bet']['team']} {ou_value},{spread_value}"
+            print(f"{pred['game']}, recommended bet: {formatted_bet}, confidence: {pred['recommended_bet']['confidence']}%")
+        else:
+            formatted_bet = f"{pred['recommended_bet']['team']} {pred['recommended_bet']['type']} {pred['recommended_bet']['spread']}"
+            print(f"{pred['game']}, recommended bet: {formatted_bet}, confidence: {pred['recommended_bet']['confidence']}%")
+        
+        # Additional detailed information
+        print(f"  OU Prediction: {pred['over_under']['prediction']} {pred['over_under']['line']} (confidence: {pred['over_under']['confidence']}%)")
+        print(f"  Spread Analysis: Predicted {pred['spread_analysis']['predicted']:.2f}, Actual {pred['spread_analysis']['actual']:.2f} (confidence: {pred['spread_analysis']['confidence']:.1f}%)")
     print("===TEXT_OUTPUT_END===")
     
     # 4. XML format (for XML processing applications)
