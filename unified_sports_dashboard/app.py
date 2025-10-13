@@ -1167,31 +1167,31 @@ def get_ttl_hash(seconds=600):
 def index():
     """Main dashboard page showing all sports predictions"""
     try:
-        # Fetch predictions from all sports with fallback to mock data
+        # Fetch predictions from all sports - no mock data fallback
         cfb_predictions = fetch_cfb_predictions(ttl_hash=get_ttl_hash())
         if not cfb_predictions:
-            print("Using mock CFB data")
-            cfb_predictions = get_mock_predictions('CFB')
+            print("No CFB games found")
+            cfb_predictions = {}
             
         mlb_predictions = fetch_mlb_predictions(ttl_hash=get_ttl_hash())
         if not mlb_predictions:
-            print("Using mock MLB data")
-            mlb_predictions = get_mock_predictions('MLB')
+            print("No MLB games found")
+            mlb_predictions = {}
             
         nba_predictions = fetch_nba_predictions(ttl_hash=get_ttl_hash())
         if not nba_predictions:
-            print("Using mock NBA data")
-            nba_predictions = get_mock_predictions('NBA')
+            print("No NBA games found")
+            nba_predictions = {}
             
         nfl_predictions = fetch_nfl_predictions(ttl_hash=get_ttl_hash())
         if not nfl_predictions:
-            print("Using mock NFL data")
-            nfl_predictions = get_mock_predictions('NFL')
+            print("No NFL games found")
+            nfl_predictions = {}
             
         nhl_predictions = fetch_nhl_predictions(ttl_hash=get_ttl_hash())
         if not nhl_predictions:
-            print("Using mock NHL data")
-            nhl_predictions = get_mock_predictions('NHL')
+            print("No NHL games found")
+            nhl_predictions = {}
         
         # Combine all predictions
         all_predictions = {
@@ -1214,11 +1214,11 @@ def api_predictions():
     """API endpoint to get all predictions as JSON"""
     try:
         predictions = {
-            'CFB': fetch_cfb_predictions(ttl_hash=get_ttl_hash()),
-            'MLB': fetch_mlb_predictions(ttl_hash=get_ttl_hash()),
-            'NBA': fetch_nba_predictions(ttl_hash=get_ttl_hash()),
-            'NFL': fetch_nfl_predictions(ttl_hash=get_ttl_hash()),
-            'NHL': fetch_nhl_predictions(ttl_hash=get_ttl_hash())
+            'CFB': fetch_cfb_predictions(ttl_hash=get_ttl_hash()) or {},
+            'MLB': fetch_mlb_predictions(ttl_hash=get_ttl_hash()) or {},
+            'NBA': fetch_nba_predictions(ttl_hash=get_ttl_hash()) or {},
+            'NFL': fetch_nfl_predictions(ttl_hash=get_ttl_hash()) or {},
+            'NHL': fetch_nhl_predictions(ttl_hash=get_ttl_hash()) or {}
         }
         return jsonify(predictions)
     except Exception as e:
@@ -1230,15 +1230,15 @@ def api_sport_predictions(sport):
     sport = sport.upper()
     try:
         if sport == 'CFB':
-            predictions = fetch_cfb_predictions(ttl_hash=get_ttl_hash())
+            predictions = fetch_cfb_predictions(ttl_hash=get_ttl_hash()) or {}
         elif sport == 'MLB':
-            predictions = fetch_mlb_predictions(ttl_hash=get_ttl_hash())
+            predictions = fetch_mlb_predictions(ttl_hash=get_ttl_hash()) or {}
         elif sport == 'NBA':
-            predictions = fetch_nba_predictions(ttl_hash=get_ttl_hash())
+            predictions = fetch_nba_predictions(ttl_hash=get_ttl_hash()) or {}
         elif sport == 'NFL':
-            predictions = fetch_nfl_predictions(ttl_hash=get_ttl_hash())
+            predictions = fetch_nfl_predictions(ttl_hash=get_ttl_hash()) or {}
         elif sport == 'NHL':
-            predictions = fetch_nhl_predictions(ttl_hash=get_ttl_hash())
+            predictions = fetch_nhl_predictions(ttl_hash=get_ttl_hash()) or {}
         else:
             return jsonify({'error': f'Unknown sport: {sport}'}), 400
         
@@ -1251,11 +1251,11 @@ def export_csv():
     """Export all predictions to CSV"""
     try:
         predictions = {
-            'CFB': fetch_cfb_predictions(ttl_hash=get_ttl_hash()),
-            'MLB': fetch_mlb_predictions(ttl_hash=get_ttl_hash()),
-            'NBA': fetch_nba_predictions(ttl_hash=get_ttl_hash()),
-            'NFL': fetch_nfl_predictions(ttl_hash=get_ttl_hash()),
-            'NHL': fetch_nhl_predictions(ttl_hash=get_ttl_hash())
+            'CFB': fetch_cfb_predictions(ttl_hash=get_ttl_hash()) or {},
+            'MLB': fetch_mlb_predictions(ttl_hash=get_ttl_hash()) or {},
+            'NBA': fetch_nba_predictions(ttl_hash=get_ttl_hash()) or {},
+            'NFL': fetch_nfl_predictions(ttl_hash=get_ttl_hash()) or {},
+            'NHL': fetch_nhl_predictions(ttl_hash=get_ttl_hash()) or {}
         }
         
         # Create CSV content

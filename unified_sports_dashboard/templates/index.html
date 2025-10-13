@@ -70,9 +70,27 @@
         
         .no-games {
             text-align: center;
-            padding: 2rem;
+            padding: 4rem 2rem;
             color: #6c757d;
-            font-style: italic;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            margin: 2rem 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .no-games i {
+            color: #adb5bd;
+            margin-bottom: 1rem;
+        }
+        
+        .no-games h3 {
+            color: #495057;
+            margin-bottom: 1rem;
+        }
+        
+        .no-games p {
+            font-size: 1.1rem;
+            margin-bottom: 0;
         }
         
         .refresh-btn {
@@ -157,7 +175,6 @@
 
         <!-- Sports Sections -->
         {% for sport, predictions in data.items() %}
-        {% if predictions %}
         <div class="row">
             <div class="col-12">
                 <div class="card sport-card">
@@ -178,70 +195,77 @@
                         </h3>
                     </div>
                     <div class="card-body">
-                        {% for game_key, game in predictions.items() %}
-                        <div class="game-card">
-                            <div class="row">
-                                <!-- Teams -->
-                                <div class="col-md-4">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="text-center">
-                                            <div class="team-name">{{ game.away_team }}</div>
-                                            {% if game.away_confidence %}
-                                            <span class="badge bg-secondary confidence-badge">{{ game.away_confidence }}%</span>
-                                            {% endif %}
+                        {% if predictions %}
+                            {% for game_key, game in predictions.items() %}
+                            <div class="game-card">
+                                <div class="row">
+                                    <!-- Teams -->
+                                    <div class="col-md-4">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div class="text-center">
+                                                <div class="team-name">{{ game.away_team }}</div>
+                                                {% if game.away_confidence %}
+                                                <span class="badge bg-secondary confidence-badge">{{ game.away_confidence }}%</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="text-center">
+                                                <strong>@</strong>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="team-name">{{ game.home_team }}</div>
+                                                {% if game.home_confidence %}
+                                                <span class="badge bg-secondary confidence-badge">{{ game.home_confidence }}%</span>
+                                                {% endif %}
+                                            </div>
                                         </div>
-                                        <div class="text-center">
-                                            <strong>@</strong>
+                                        {% if game.kickoff %}
+                                        <div class="text-center mt-2">
+                                            <small class="text-muted">
+                                                <i class="fas fa-clock"></i> {{ game.kickoff }}
+                                            </small>
                                         </div>
+                                        {% endif %}
+                                        {% if game.venue %}
                                         <div class="text-center">
-                                            <div class="team-name">{{ game.home_team }}</div>
-                                            {% if game.home_confidence %}
-                                            <span class="badge bg-secondary confidence-badge">{{ game.home_confidence }}%</span>
-                                            {% endif %}
+                                            <small class="text-muted">
+                                                <i class="fas fa-map-marker-alt"></i> {{ game.venue }}
+                                            </small>
                                         </div>
+                                        {% endif %}
                                     </div>
-                                    {% if game.kickoff %}
-                                    <div class="text-center mt-2">
-                                        <small class="text-muted">
-                                            <i class="fas fa-clock"></i> {{ game.kickoff }}
-                                        </small>
-                                    </div>
-                                    {% endif %}
-                                    {% if game.venue %}
-                                    <div class="text-center">
-                                        <small class="text-muted">
-                                            <i class="fas fa-map-marker-alt"></i> {{ game.venue }}
-                                        </small>
-                                    </div>
-                                    {% endif %}
-                                </div>
 
-                                <!-- Recommended Bet -->
-                                <div class="col-md-8">
-                                    {% if game.raw_prediction %}
-                                    <div class="alert alert-success text-center">
-                                        <h5 class="alert-heading mb-3">
-                                            <i class="fas fa-star me-2"></i>Recommended Bet
-                                        </h5>
-                                        <p class="mb-0 fs-5 fw-bold">{{ game.raw_prediction }}</p>
+                                    <!-- Recommended Bet -->
+                                    <div class="col-md-8">
+                                        {% if game.raw_prediction %}
+                                        <div class="alert alert-success text-center">
+                                            <h5 class="alert-heading mb-3">
+                                                <i class="fas fa-star me-2"></i>Recommended Bet
+                                            </h5>
+                                            <p class="mb-0 fs-5 fw-bold">{{ game.raw_prediction }}</p>
+                                        </div>
+                                        {% else %}
+                                        <div class="alert alert-secondary text-center">
+                                            <h5 class="alert-heading mb-3">
+                                                <i class="fas fa-info-circle me-2"></i>No Recommendation Available
+                                            </h5>
+                                            <p class="mb-0">No betting recommendation for this game</p>
+                                        </div>
+                                        {% endif %}
                                     </div>
-                                    {% else %}
-                                    <div class="alert alert-secondary text-center">
-                                        <h5 class="alert-heading mb-3">
-                                            <i class="fas fa-info-circle me-2"></i>No Recommendation Available
-                                        </h5>
-                                        <p class="mb-0">No betting recommendation for this game</p>
-                                    </div>
-                                    {% endif %}
                                 </div>
                             </div>
-                        </div>
-                        {% endfor %}
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="fas fa-calendar-times fa-2x text-muted mb-3"></i>
+                                <h5 class="text-muted">No games scheduled for {{ sport }}</h5>
+                                <p class="text-muted mb-0">Check back later for updated predictions!</p>
+                            </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
-        {% endif %}
         {% endfor %}
 
         <!-- No Games Message -->
@@ -249,9 +273,16 @@
         <div class="row">
             <div class="col-12">
                 <div class="no-games">
-                    <i class="fas fa-calendar-times fa-3x mb-3"></i>
-                    <h3>No games scheduled for today</h3>
-                    <p>Check back later for updated predictions!</p>
+                    <i class="fas fa-calendar-times fa-4x mb-4"></i>
+                    <h2 class="mb-3">No Games Scheduled</h2>
+                    <p class="mb-3">There are currently no games scheduled for today across all sports leagues.</p>
+                    <p class="mb-0">Check back later for updated predictions and game schedules!</p>
+                    <div class="mt-4">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Last checked: {{ today.strftime('%B %d, %Y at %I:%M %p') }}
+                        </small>
+                    </div>
                 </div>
             </div>
         </div>
