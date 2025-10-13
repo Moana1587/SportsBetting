@@ -15,7 +15,7 @@ import glob
 import os
 
 # Updated data sources to use database tables
-todays_games_url = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'
+todays_games_url = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates={today}'
 
 # NFL team name mapping for consistent team identification
 NFL_TEAM_MAPPING = {
@@ -496,7 +496,11 @@ def main():
     else:
         try:
             print("Attempting to fetch today's games from ESPN API...")
-            data = get_todays_games_json(todays_games_url)
+            # Format the URL with today's date
+            today = datetime.now().strftime('%Y%m%d')
+            formatted_url = todays_games_url.format(today=today)
+            print(f"Using URL: {formatted_url}")
+            data = get_todays_games_json(formatted_url)
             games = create_todays_games(data)
             
             if not games:

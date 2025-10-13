@@ -54,6 +54,16 @@ def fetch_cfb_predictions(ttl_hash=None):
                 log_debug(f"CFB fallback stderr: {result.stderr}")
                 return {}
         
+        # Check if there are no games scheduled
+        if "No games found for today" in result.stdout or "No games found" in result.stdout:
+            log_debug("CFB: No games scheduled for today")
+            return {}
+        
+        # Check if stdout is empty or only contains debug messages
+        if not result.stdout.strip() or len(result.stdout.strip()) < 50:
+            log_debug("CFB: No meaningful output, likely no games scheduled")
+            return {}
+        
         return parse_cfb_predictions(result.stdout)
     except subprocess.TimeoutExpired:
         print("CFB command timed out")
@@ -65,6 +75,10 @@ def fetch_cfb_predictions(ttl_hash=None):
 def parse_cfb_predictions(stdout):
     """Parse CFB predictions from main.py output"""
     games = {}
+    
+    # Check if there are no games in the output
+    if "No games found for today" in stdout or "No games found" in stdout:
+        return {}
     
     # First, look for the specific recommended bet format from CFB main.py
     # Pattern: "Team A vs Team B, recommended bet: Team C(spread_value), confidence: X.X%"
@@ -182,6 +196,10 @@ def parse_cfb_predictions(stdout):
             game_data['recommended_bet'] = main_recommendation
             game_data['confidence'] = main_confidence
             game_data['all_recommendations'] = recommendations
+    
+    # If no games were parsed, return empty dict
+    if not games:
+        log_debug("CFB: No games parsed from output")
     
     return games
 
@@ -360,6 +378,16 @@ def fetch_mlb_predictions(ttl_hash=None):
             print(f"MLB stdout: {result.stdout}")
             return {}
         
+        # Check if there are no games scheduled
+        if "No games found for today" in result.stdout or "No games found" in result.stdout or "No games entered" in result.stdout:
+            log_debug("MLB: No games scheduled for today")
+            return {}
+        
+        # Check if stdout is empty or only contains debug messages
+        if not result.stdout.strip() or len(result.stdout.strip()) < 50:
+            log_debug("MLB: No meaningful output, likely no games scheduled")
+            return {}
+        
         return parse_mlb_predictions(result.stdout)
     except subprocess.TimeoutExpired:
         print("MLB command timed out")
@@ -371,6 +399,10 @@ def fetch_mlb_predictions(ttl_hash=None):
 def parse_mlb_predictions(stdout):
     """Parse MLB predictions from main.py output (handles multiple formats)"""
     games = {}
+    
+    # Check if there are no games in the output
+    if "No games found for today" in stdout or "No games found" in stdout or "No games entered" in stdout:
+        return {}
     
     # 1. Look for the TEXT_OUTPUT format from XGBoost_Runner.py
     text_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<bet_description>[^,]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
@@ -551,6 +583,10 @@ def parse_mlb_predictions(stdout):
 
             games[game_key] = game_dict
     
+    # If no games were parsed, return empty dict
+    if not games:
+        log_debug("MLB: No games parsed from output")
+    
     return games
 
 @lru_cache()
@@ -568,6 +604,16 @@ def fetch_nba_predictions(ttl_hash=None):
             print(f"NBA stdout: {result.stdout}")
             return {}
         
+        # Check if there are no games scheduled
+        if "No games found" in result.stdout or "No games available" in result.stdout:
+            log_debug("NBA: No games scheduled for today")
+            return {}
+        
+        # Check if stdout is empty or only contains debug messages
+        if not result.stdout.strip() or len(result.stdout.strip()) < 50:
+            log_debug("NBA: No meaningful output, likely no games scheduled")
+            return {}
+        
         return parse_nba_predictions(result.stdout)
     except subprocess.TimeoutExpired:
         print("NBA command timed out after 120 seconds")
@@ -579,6 +625,11 @@ def fetch_nba_predictions(ttl_hash=None):
 def parse_nba_predictions(stdout):
     """Parse NBA predictions from main.py output"""
     games = {}
+    
+    # Check if there are no games in the output
+    if "No games found" in stdout or "No games available" in stdout:
+        return {}
+    
     data_re = re.compile(r'\n(?P<home_team>[\w ]+)(\((?P<home_confidence>[\d+\.]+)%\))? vs (?P<away_team>[\w ]+)(\((?P<away_confidence>[\d+\.]+)%\))?: (?P<ou_pick>OVER|UNDER) (?P<ou_value>[\d+\.]+) (\((?P<ou_confidence>[\d+\.]+)%\))?', re.MULTILINE)
     ev_re = re.compile(r'(?P<team>[\w ]+) EV: (?P<ev>[-\d+\.]+)', re.MULTILINE)
     odds_re = re.compile(r'(?P<away_team>[\w ]+) \((?P<away_team_odds>-?\d+)\) @ (?P<home_team>[\w ]+) \((?P<home_team_odds>-?\d+)\)', re.MULTILINE)
@@ -657,6 +708,10 @@ def parse_nba_predictions(stdout):
 
         games[game_key] = game_dict
     
+    # If no games were parsed, return empty dict
+    if not games:
+        log_debug("NBA: No games parsed from output")
+    
     return games
 
 @lru_cache()
@@ -674,6 +729,16 @@ def fetch_nfl_predictions(ttl_hash=None):
             print(f"NFL stdout: {result.stdout}")
             return {}
         
+        # Check if there are no games scheduled
+        if "No games found" in result.stdout or "No games available" in result.stdout:
+            log_debug("NFL: No games scheduled for today")
+            return {}
+        
+        # Check if stdout is empty or only contains debug messages
+        if not result.stdout.strip() or len(result.stdout.strip()) < 50:
+            log_debug("NFL: No meaningful output, likely no games scheduled")
+            return {}
+        
         return parse_nfl_predictions(result.stdout)
     except subprocess.TimeoutExpired:
         print("NFL command timed out after 120 seconds")
@@ -685,6 +750,10 @@ def fetch_nfl_predictions(ttl_hash=None):
 def parse_nfl_predictions(stdout):
     """Parse NFL predictions from main.py output (handles multiple formats)"""
     games = {}
+    
+    # Check if there are no games in the output
+    if "No games found" in stdout or "No games available" in stdout:
+        return {}
     
     # 1. Look for the TEXT_OUTPUT format from XGBoost_Runner.py
     text_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<bet_type>[\w]+) \((?P<spread>[+-]?[\d.]+)\), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
@@ -900,6 +969,10 @@ def parse_nfl_predictions(stdout):
 
             games[game_key] = game_dict
     
+    # If no games were parsed, return empty dict
+    if not games:
+        log_debug("NFL: No games parsed from output")
+    
     return games
 
 @lru_cache()
@@ -907,7 +980,7 @@ def fetch_nhl_predictions(ttl_hash=None):
     """Fetch NHL predictions"""
     del ttl_hash
     try:
-        cmd = ["python", "main.py", "--fallback"]
+        cmd = ["python", "main.py", "-xgb"]
         result = subprocess.run(cmd, cwd=PROJECT_PATHS['NHL'], 
                               capture_output=True, text=True, timeout=20,
                               encoding='utf-8', errors='replace')
@@ -916,6 +989,16 @@ def fetch_nhl_predictions(ttl_hash=None):
             print(f"NHL command failed with return code {result.returncode}")
             print(f"NHL stderr: {result.stderr}")
             print(f"NHL stdout: {result.stdout}")
+            return {}
+        
+        # Check if there are no games scheduled
+        if "No games available" in result.stdout or "No upcoming games found" in result.stdout or "No games found for today" in result.stdout:
+            log_debug("NHL: No games scheduled for today")
+            return {}
+        
+        # Check if stdout is empty or only contains debug messages
+        if not result.stdout.strip() or len(result.stdout.strip()) < 50:
+            log_debug("NHL: No meaningful output, likely no games scheduled")
             return {}
         
         return parse_nhl_predictions(result.stdout)
@@ -929,6 +1012,10 @@ def fetch_nhl_predictions(ttl_hash=None):
 def parse_nhl_predictions(stdout):
     """Parse NHL predictions from main.py output"""
     games = {}
+    
+    # Check if there are no games in the output
+    if "No games available" in stdout or "No upcoming games found" in stdout or "No games found for today" in stdout:
+        return {}
     
     # Look for the simple format: "Team A vs Team B, recommended bet: Team A OVER 5.5, confidence: 51.3%"
     simple_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<bet_type>OVER|UNDER) (?P<bet_value>[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
@@ -1045,6 +1132,10 @@ def parse_nhl_predictions(stdout):
             game_dict['all_recommendations'] = recommendations
 
             games[game_key] = game_dict
+    
+    # If no games were parsed, return empty dict
+    if not games:
+        log_debug("NHL: No games parsed from output")
     
     return games
 

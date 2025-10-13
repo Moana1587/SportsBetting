@@ -88,7 +88,16 @@ def get_todays_games_json(url, timeout=30, max_retries=3):
             try:
                 json_data = raw_data.json()
                 print(f"Successfully retrieved games data from ESPN API")
-                return json_data.get('events', [])
+                
+                # Extract events from the response
+                events = json_data.get('events', [])
+                if not events:
+                    print("No events found in API response")
+                    return []
+                
+                print(f"Found {len(events)} events in API response")
+                return events
+                
             except Exception as e:
                 print(f"Error parsing JSON from ESPN API: {e}")
                 return []
@@ -166,15 +175,39 @@ def to_data_frame(data):
 def create_todays_games(input_list):
     games = []
     for game in input_list:
-        if game.get('status', {}).get('type', {}).get('name') == 'STATUS_SCHEDULED':
+        # Check if game is scheduled (not completed or in progress)
+        status = game.get('status', {})
+        status_type = status.get('type', {})
+        status_name = status_type.get('name', '')
+        
+        # Include scheduled games and games in progress
+        if status_name in ['STATUS_SCHEDULED', 'STATUS_IN_PROGRESS']:
             competitions = game.get('competitions', [])
             if competitions:
                 competitors = competitions[0].get('competitors', [])
                 if len(competitors) >= 2:
-                    home_team = competitors[0].get('team', {}).get('displayName', '')
-                    away_team = competitors[1].get('team', {}).get('displayName', '')
+                    # Get team information
+                    home_team_info = competitors[0].get('team', {})
+                    away_team_info = competitors[1].get('team', {})
+                    
+                    # Extract team names - try different possible fields
+                    home_team = (home_team_info.get('displayName', '') or 
+                               home_team_info.get('name', '') or 
+                               home_team_info.get('shortDisplayName', ''))
+                    
+                    away_team = (away_team_info.get('displayName', '') or 
+                               away_team_info.get('name', '') or 
+                               away_team_info.get('shortDisplayName', ''))
+                    
                     if home_team and away_team:
                         games.append([home_team, away_team])
+                        print(f"Found game: {away_team} @ {home_team} (Status: {status_name})")
+    
+    if not games:
+        print("No games found for today")
+    else:
+        print(f"Successfully parsed {len(games)} games from ESPN API")
+    
     return games
 
 
