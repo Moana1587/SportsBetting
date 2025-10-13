@@ -15,7 +15,7 @@ from src.Predict import NN_Runner, XGBoost_Runner
 from src.Utils.tools import create_todays_games_from_odds, get_json_data, to_data_frame, get_todays_games_json, create_todays_games
 
 # MLB API URLs
-todays_games_url = 'https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2025-10-08' #+ datetime.today().strftime('%Y-%m-%d')
+todays_games_url = 'https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=' + datetime.today().strftime('%Y-%m-%d')
 data_url = 'https://bdfed.stitch.mlbinfra.com/bdfed/stats/team?env=prod&sportId=1&gameType=R&group=hitting&stats=season&season=2024&limit=1000&offset=0'
 
 

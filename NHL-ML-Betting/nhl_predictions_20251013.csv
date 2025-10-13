@@ -1,0 +1,10 @@
+Date,Home_Team,Away_Team,ML_Winner,ML_Confidence,Home_ML_Odds,Away_ML_Odds,OU_Pick,OU_Value,OU_Confidence,Spread_Pick,Spread_Value,Spread_Confidence,Model_ML_Accuracy,Model_UO_Accuracy,Model_Spread_Accuracy
+20251013,Buffalo Sabres,Colorado Avalanche,Colorado Avalanche,71.2,-110,-110,OVER,5.5,12.1,Colorado Avalanche +1.5,1.5,72.0,64.9%,49.1%,100.0%
+20251013,Boston Bruins,Tampa Bay Lightning,Tampa Bay Lightning,59.9,-110,-110,OVER,5.5,7.6,Tampa Bay Lightning +1.5,1.5,22.9,64.9%,49.1%,100.0%
+20251013,Ottawa Senators,Nashville Predators,Ottawa Senators,63.6,-110,-110,OVER,5.5,1.6,Nashville Predators +1.5,1.5,187.7,64.9%,49.1%,100.0%
+20251013,New York Islanders,Winnipeg Jets,Winnipeg Jets,61.0,-110,-110,OVER,5.5,4.3,Winnipeg Jets +1.5,1.5,53.4,64.9%,49.1%,100.0%
+20251013,Toronto Maple Leafs,Detroit Red Wings,Toronto Maple Leafs,72.2,-110,-110,OVER,5.5,5.3,Detroit Red Wings +1.5,1.5,177.0,64.9%,49.1%,100.0%
+20251013,Philadelphia Flyers,Florida Panthers,Florida Panthers,69.8,-110,-110,OVER,5.5,7.9,Florida Panthers +1.5,1.5,43.6,64.9%,49.1%,100.0%
+20251013,Columbus Blue Jackets,New Jersey Devils,New Jersey Devils,58.1,-110,-110,OVER,5.5,3.9,New Jersey Devils +1.5,1.5,103.0,64.9%,49.1%,100.0%
+20251013,Vancouver Canucks,St. Louis Blues,Vancouver Canucks,57.4,-110,-110,OVER,5.5,3.4,St. Louis Blues +1.5,1.5,95.4,64.9%,49.1%,100.0%
+20251013,Minnesota Wild,Los Angeles Kings,Los Angeles Kings,51.6,-110,-110,UNDER,5.5,1.6,Los Angeles Kings +1.5,1.5,125.0,64.9%,49.1%,100.0%
