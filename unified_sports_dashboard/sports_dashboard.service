@@ -1,0 +1,15 @@
+[Unit]
+Description=Sports Dashboard Flask Application
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/your/unified_sports_dashboard
+Environment=PATH=/path/to/your/venv/bin
+ExecStart=/path/to/your/venv/bin/gunicorn --config gunicorn_config.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

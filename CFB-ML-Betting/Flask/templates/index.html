@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Football Betting Predictions</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 20px;
+        }
+        .header h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            color: #7f8c8d;
+            margin: 10px 0 0 0;
+            font-size: 1.1em;
+        }
+        .game-card {
+            background: #fff;
+            border: 2px solid #ecf0f1;
+            border-radius: 8px;
+            margin: 20px 0;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .game-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        .teams {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .game-info {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        .predictions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .prediction-card {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+        }
+        .prediction-type {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        .prediction-result {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .confidence {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .value {
+            color: #2c3e50;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-top: 5px;
+            padding: 3px 8px;
+            background-color: #ecf0f1;
+            border-radius: 3px;
+        }
+        .no-games {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 1.2em;
+            padding: 40px;
+        }
+        .refresh-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 20px 0;
+        }
+        .refresh-btn:hover {
+            background: #2980b9;
+        }
+        .ml-prediction { color: #e74c3c; }
+        .spread-prediction { color: #f39c12; }
+        .ou-prediction { color: #9b59b6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>College Football Betting Predictions</h1>
+            <p>ML • Spread • Over/Under Predictions for {{ today.strftime('%B %d, %Y') }}</p>
+            <div style="margin-top: 15px;">
+                <button class="refresh-btn" onclick="location.reload()">Refresh Predictions</button>
+                <button class="refresh-btn" onclick="window.open('/export/csv', '_blank')" style="background: #27ae60; margin-left: 10px;">Export CSV</button>
+            </div>
+        </div>
+
+        {% if data.cfb_predictions %}
+            {% for game_key, game in data.cfb_predictions.items() %}
+                <div class="game-card">
+                    <div class="game-header">
+                        <div class="teams">{{ game.away_team }} @ {{ game.home_team }}</div>
+                        <div class="game-info">
+                            {% if game.kickoff %}{{ game.kickoff }}{% endif %}
+                            {% if game.venue %}<br>{{ game.venue }}{% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="predictions">
+                        {% if game.ml_prediction %}
+                        <div class="prediction-card">
+                            <div class="prediction-type">Moneyline</div>
+                            <div class="prediction-result ml-prediction">{{ game.ml_prediction }}</div>
+                            <div class="confidence">{{ game.ml_confidence }} confidence</div>
+                            {% if game.ml_value %}
+                            <div class="value">ML Value: {{ game.ml_value }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        {% if game.spread_prediction %}
+                        <div class="prediction-card">
+                            <div class="prediction-type">Spread</div>
+                            <div class="prediction-result spread-prediction">{{ game.spread_prediction }}</div>
+                            <div class="confidence">{{ game.spread_confidence }} confidence</div>
+                            {% if game.spread_value %}
+                            <div class="value">Spread Value: {{ game.spread_value }}%</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        {% if game.ou_prediction %}
+                        <div class="prediction-card">
+                            <div class="prediction-type">Over/Under</div>
+                            <div class="prediction-result ou-prediction">{{ game.ou_prediction }}</div>
+                            <div class="confidence">{{ game.ou_confidence }} confidence</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-games">
+                <h3>No games found for today</h3>
+                <p>Check back later for today's college football predictions!</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Auto-refresh every 10 minutes
+        setTimeout(function() {
+            location.reload();
+        }, 600000);
+    </script>
+</body>
+</html>

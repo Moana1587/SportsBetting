@@ -1,0 +1,118 @@
+data_url = "https://stats.nba.com/stats/leaguedashteamstats?Conference=&DateFrom=&DateTo=&Division=&GameScope=&GameSegment=&Height=&ISTRound=&LastNGames=0&LeagueID=00&Location=&MeasureType=Base&Month=0&OpponentTeamID=0&Outcome=&PORound=0&PaceAdjust=N&PerMode=PerGame&Period=0&PlayerExperience=&PlayerPosition=&PlusMinus=N&Rank=N&Season=2024-25&SeasonSegment=&SeasonType=Playoffs&ShotClockRange=&StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision="
+
+[get-data]
+    [get-data.2018-19]
+        start_date = "2018-03-29"   
+        end_date   = "2018-10-28"   
+        start_year = "2018"
+        end_year   = "2018"
+
+    [get-data.2019-20]
+        start_date = "2019-03-20"  
+        end_date   = "2019-10-30"  
+        start_year = "2019"
+        end_year   = "2019"
+
+    [get-data.2020-21]
+        start_date = "2020-07-23"   
+        end_date   = "2020-10-27"  
+        start_year = "2020"
+        end_year   = "2020"
+
+    [get-data.2021-22]
+        start_date = "2021-04-01"   
+        end_date   = "2021-11-02" 
+        start_year = "2021"
+        end_year   = "2021"
+
+    [get-data.2022-23]
+        start_date = "2022-04-07"   
+        end_date   = "2022-11-05"  
+        start_year = "2022"
+        end_year   = "2022"
+
+    [get-data.2023-24]
+        start_date = "2023-03-30"
+        end_date   = "2023-11-01"  
+        start_year = "2023"
+        end_year   = "2023"
+
+    [get-data.2024-25]
+        start_date = "2024-03-20"  
+        end_date   = "2024-10-30"  
+        start_year = "2024"
+        end_year   = "2024"
+
+[get-odds-data]
+    [get-odds-data.2018-19]
+        start_date = "2018-03-29"   
+        end_date   = "2018-10-28"   
+        start_year = "2018"
+        end_year   = "2018"
+
+    [get-odds-data.2019-20]
+        start_date = "2019-03-20"  
+        end_date   = "2019-10-30"  
+        start_year = "2019"
+        end_year   = "2019"
+
+    [get-odds-data.2020-21]
+        start_date = "2020-07-23"   
+        end_date   = "2020-10-27"  
+        start_year = "2020"
+        end_year   = "2020"
+
+    [get-odds-data.2021-22]
+        start_date = "2021-04-01"   
+        end_date   = "2021-11-02"   
+        start_year = "2021"
+        end_year   = "2021"
+
+    [get-odds-data.2022-23]
+        start_date = "2022-04-07"   
+        end_date   = "2022-11-05"   
+        start_year = "2022"
+        end_year   = "2022"
+
+    [get-odds-data.2023-24]
+        start_date = "2023-03-30"   
+        end_date   = "2023-11-01"   
+        start_year = "2023"
+        end_year   = "2023"
+
+    [get-odds-data.2024-25]
+        start_date = "2024-03-20"   
+        end_date   = "2024-10-30"   
+        start_year = "2024"
+        end_year   = "2024"
+
+[create-games]
+    [create-games.2020-21]
+        start_date = "2020-07-23"   
+        end_date   = "2020-10-27"  
+        start_year = "2020"
+        end_year   = "2020"
+
+    [create-games.2021-22]
+        start_date = "2021-04-01"   
+        end_date   = "2021-11-02"   
+        start_year = "2021"
+        end_year   = "2021"
+
+    [create-games.2022-23]
+        start_date = "2022-04-07"   
+        end_date   = "2022-11-05"   
+        start_year = "2022"
+        end_year   = "2022"
+
+    [create-games.2023-24]
+        start_date = "2023-03-30"   
+        end_date   = "2023-11-01"   
+        start_year = "2023"
+        end_year   = "2023"
+
+    [create-games.2024-25]
+        start_date = "2024-03-20"   
+        end_date   = "2024-10-30"   
+        start_year = "2024"
+        end_year   = "2024"

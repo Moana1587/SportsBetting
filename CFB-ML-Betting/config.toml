@@ -1,0 +1,238 @@
+
+CFBD_KEY="dTYsx4FGjqSNJdqnIylk32HsJ6dBGeTry5nqHg3R+rKnu/745bzicjQF6GDlSTQf"
+[get-data]
+    [get-data.2009-10]
+        start_date = "2009-09-03"
+        end_date   = "2010-01-07"
+        start_year = "2009"
+        end_year   = "2010"
+
+    [get-data.2010-11]
+        start_date = "2010-09-02"
+        end_date   = "2011-01-10"
+        start_year = "2010"
+        end_year   = "2011"
+
+    [get-data.2011-12]
+        start_date = "2011-09-01"
+        end_date   = "2012-01-09"
+        start_year = "2011"
+        end_year   = "2012"
+
+    [get-data.2012-13]
+        start_date = "2012-08-30"
+        end_date   = "2013-01-07"
+        start_year = "2012"
+        end_year   = "2013"
+
+    [get-data.2013-14]
+        start_date = "2013-08-29"
+        end_date   = "2014-01-06"
+        start_year = "2013"
+        end_year   = "2014"
+
+    [get-data.2014-15]
+        start_date = "2014-08-27"
+        end_date   = "2015-01-12"
+        start_year = "2014"
+        end_year   = "2015"
+
+    [get-data.2015-16]
+        start_date = "2015-09-03"
+        end_date   = "2016-01-11"
+        start_year = "2015"
+        end_year   = "2016"
+
+    [get-data.2016-17]
+        start_date = "2016-08-26"
+        end_date   = "2017-01-09"
+        start_year = "2016"
+        end_year   = "2017"
+
+    [get-data.2017-18]
+        start_date = "2017-08-26"
+        end_date   = "2018-01-08"
+        start_year = "2017"
+        end_year   = "2018"
+
+    [get-data.2018-19]
+        start_date = "2018-08-25"
+        end_date   = "2019-01-07"
+        start_year = "2018"
+        end_year   = "2019"
+
+    [get-data.2019-20]
+        start_date = "2019-08-24"
+        end_date   = "2020-01-13"
+        start_year = "2019"
+        end_year   = "2020"
+
+    [get-data.2020-21]
+        start_date = "2020-09-03"
+        end_date   = "2021-01-11"
+        start_year = "2020"
+        end_year   = "2021"
+
+    [get-data.2021-22]
+        start_date = "2021-08-28"
+        end_date   = "2022-01-10"
+        start_year = "2021"
+        end_year   = "2022"
+
+    [get-data.2022-23]
+        start_date = "2022-08-27"
+        end_date   = "2023-01-09"
+        start_year = "2022"
+        end_year   = "2023"
+        
+    [get-data.2024-25]
+        start_date = "2024-08-24"
+        end_date = "2025-01-13"
+        start_year = "2024"
+        end_year = "2025"
+
+    [get-data.2025-26]
+        start_date = "2025-08-23"
+        end_date = "2026-01-12"
+        start_year = "2025"
+        end_year = "2026"
+
+[get-odds-data]
+    [get-odds-data.2009-10]
+        start_date = "2009-09-03"
+        end_date   = "2010-01-07"
+        start_year = "2009"
+        end_year   = "2010"
+
+    [get-odds-data.2010-11]
+        start_date = "2010-09-02"
+        end_date   = "2011-01-10"
+        start_year = "2010"
+        end_year   = "2011"
+
+    [get-odds-data.2011-12]
+        start_date = "2011-09-01"
+        end_date   = "2012-01-09"
+        start_year = "2011"
+        end_year   = "2012"
+
+    [get-odds-data.2012-13]
+        start_date = "2012-08-30"
+        end_date   = "2013-01-07"
+        start_year = "2012"
+        end_year   = "2013"
+
+    [get-odds-data.2013-14]
+        start_date = "2013-08-29"
+        end_date   = "2014-01-06"
+        start_year = "2013"
+        end_year   = "2014"
+
+    [get-odds-data.2014-15]
+        start_date = "2014-08-27"
+        end_date   = "2015-01-12"
+        start_year = "2014"
+        end_year   = "2015"
+
+    [get-odds-data.2015-16]
+        start_date = "2015-09-03"
+        end_date   = "2016-01-11"
+        start_year = "2015"
+        end_year   = "2016"
+
+    [get-odds-data.2016-17]
+        start_date = "2016-08-26"
+        end_date   = "2017-01-09"
+        start_year = "2016"
+        end_year   = "2017"
+
+    [get-odds-data.2017-18]
+        start_date = "2017-08-26"
+        end_date   = "2018-01-08"
+        start_year = "2017"
+        end_year   = "2018"
+
+    [get-odds-data.2018-19]
+        start_date = "2018-08-25"
+        end_date   = "2019-01-07"
+        start_year = "2018"
+        end_year   = "2019"
+
+    [get-odds-data.2019-20]
+        start_date = "2019-08-24"
+        end_date   = "2020-01-13"
+        start_year = "2019"
+        end_year   = "2020"
+
+    [get-odds-data.2020-21]
+        start_date = "2020-09-03"
+        end_date   = "2021-01-11"
+        start_year = "2020"
+        end_year   = "2021"
+
+    [get-odds-data.2021-22]
+        start_date = "2021-08-28"
+        end_date   = "2022-01-10"
+        start_year = "2021"
+        end_year   = "2022"
+
+    [get-odds-data.2022-23]
+        start_date = "2022-08-27"
+        end_date   = "2023-01-09"
+        start_year = "2022"
+        end_year   = "2023"
+
+    [get-odds-data.2023-24]
+        start_date = "2023-10-23"
+        end_date = "2024-4-28"
+        start_year = "2023"
+        end_year = "2024"
+
+    [get-odds-data.2024-25]
+        start_date = "2024-08-24"
+        end_date = "2025-01-13"
+        start_year = "2024"
+        end_year = "2025"
+
+    [get-odds-data.2025-26]
+        start_date = "2025-08-23"
+        end_date = "2026-01-12"
+        start_year = "2025"
+        end_year = "2026"
+
+[create-games]
+    [create-games.2020-21]
+        start_date = "2020-09-03"
+        end_date   = "2021-01-11"
+        start_year = "2020"
+        end_year   = "2021"
+
+    [create-games.2021-22]
+        start_date = "2021-08-28"
+        end_date   = "2022-01-10"
+        start_year = "2021"
+        end_year   = "2022"
+
+    [create-games.2022-23]
+        start_date = "2022-08-27"
+        end_date   = "2023-01-09"
+        start_year = "2022"
+        end_year   = "2023"
+
+    [create-games.2023-24]
+        start_date = "2023-10-23"
+        end_date = "2024-4-28"
+        start_year = "2023"
+        end_year = "2024"
+
+    [create-games.2024-25]
+        start_date = "2024-08-24"
+        end_date = "2025-01-13"
+        start_year = "2024"
+        end_year = "2025"
+
+    [create-games.2025-26]
+        start_date = "2025-08-23"
+        end_date = "2026-01-12"
+        start_year = "2025"
+        end_year = "2026"
