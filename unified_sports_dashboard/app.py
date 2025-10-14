@@ -106,10 +106,12 @@ def parse_cfb_predictions(stdout):
         game_key = f"{away_team}:{home_team}"
         
         # Format the spread value with proper sign
+        # Remove any existing sign first, then add the correct one
+        clean_spread_value = spread_value.lstrip('+-')
         if spread_direction == "Home":
-            formatted_spread = f"-{spread_value}" if not spread_value.startswith('-') else spread_value
+            formatted_spread = f"-{clean_spread_value}"
         else:  # Away
-            formatted_spread = f"+{spread_value}" if not spread_value.startswith('+') else spread_value
+            formatted_spread = f"+{clean_spread_value}"
         
         # Extract confidence from edge info or use a default
         confidence = "N/A"
@@ -163,10 +165,12 @@ def parse_cfb_predictions(stdout):
                 game_key = f"{away_team}:{home_team}"
                 
                 # Format the spread value with proper sign
+                # Remove any existing sign first, then add the correct one
+                clean_spread_value = spread_value.lstrip('+-')
                 if spread_direction == "Home":
-                    formatted_spread = f"-{spread_value}" if not spread_value.startswith('-') else spread_value
+                    formatted_spread = f"-{clean_spread_value}"
                 else:  # Away
-                    formatted_spread = f"+{spread_value}" if not spread_value.startswith('+') else spread_value
+                    formatted_spread = f"+{clean_spread_value}"
                 
                 # Try to extract confidence from the surrounding text
                 confidence = "N/A"
@@ -1369,8 +1373,13 @@ def parse_nhl_predictions(stdout):
         # Create bet description - this is typically ML since the format shows ou_value,spread_value
         bet_description = f"{recommended_team} ML"
         
-        # Format the recommended bet with only spread value
-        formatted_bet = f"{recommended_team} {spread_value_rounded}"
+        # Format the recommended bet with only spread value (add sign)
+        # Determine if recommended team is home or away to assign correct sign
+        if recommended_team == home_team:
+            formatted_spread = f"-{spread_value_rounded}"
+        else:  # away team
+            formatted_spread = f"+{spread_value_rounded}"
+        formatted_bet = f"{recommended_team} {formatted_spread}"
         
         games[game_key] = {
             'away_team': away_team,
@@ -1380,8 +1389,8 @@ def parse_nhl_predictions(stdout):
             'bet_category': 'moneyline',
             'sport': 'NHL',
             'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence_rounded}%",
-            'spread_prediction': f"{recommended_team} {spread_value_rounded}",
-            'spread_line': str(spread_value_rounded),
+            'spread_prediction': f"{recommended_team} {formatted_spread}",
+            'spread_line': formatted_spread,
             'spread_confidence': f"{confidence_rounded}%",
             'ou_prediction': f"OVER {ou_value_rounded}",
             'ou_value': str(ou_value_rounded),
@@ -1408,8 +1417,17 @@ def parse_nhl_predictions(stdout):
             
             bet_description = f"{recommended_team} {bet_type} {bet_value_rounded}"
             
-            # Format the recommended bet with only spread value
-            formatted_bet = f"{recommended_team} {bet_value_rounded}"
+            # Format the recommended bet with only spread value (add sign for spread bets)
+            if bet_type in ['OVER', 'UNDER']:
+                # For over/under bets, don't add spread sign
+                formatted_bet = f"{recommended_team} {bet_type} {bet_value_rounded}"
+            else:
+                # For spread bets, determine if recommended team is home or away
+                if recommended_team == home_team:
+                    formatted_spread = f"-{bet_value_rounded}"
+                else:  # away team
+                    formatted_spread = f"+{bet_value_rounded}"
+                formatted_bet = f"{recommended_team} {formatted_spread}"
             
             games[game_key] = {
                 'away_team': away_team,
@@ -1468,7 +1486,13 @@ def parse_nhl_predictions(stdout):
                 
                 # Check if this spread recommendation is for this game
                 if spread_team in [game_dict['home_team'], game_dict['away_team']]:
-                    game_dict['spread_pick'] = f"{spread_team} {spread_value}"
+                    # Format spread value with proper sign
+                    clean_spread_value = spread_value.lstrip('+-')
+                    if spread_team == game_dict['home_team']:
+                        formatted_spread_value = f"-{clean_spread_value}"
+                    else:  # away team
+                        formatted_spread_value = f"+{clean_spread_value}"
+                    game_dict['spread_pick'] = f"{spread_team} {formatted_spread_value}"
                     game_dict['spread_confidence'] = spread_confidence
 
             # Create comprehensive recommended bet
