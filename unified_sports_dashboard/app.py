@@ -35,10 +35,9 @@ def fetch_cfb_predictions(ttl_hash=None):
     del ttl_hash
     try:
         # Try primary command first
-        cmd = ["python", "main.py", "-ml"]
+        cmd = ["python", "main.py", "-all"]
         result = subprocess.run(cmd, cwd=PROJECT_PATHS['CFB'], 
                               capture_output=True, text=True, timeout=20)
-        
         if result.returncode != 0:
             log_debug(f"CFB primary command failed with return code {result.returncode}")
             log_debug(f"CFB stderr: {result.stderr}")
@@ -80,40 +79,154 @@ def parse_cfb_predictions(stdout):
     if "No games found for today" in stdout or "No games found" in stdout:
         return {}
     
-    # First, look for the specific recommended bet format from CFB main.py
-    # Pattern: "Team A vs Team B, recommended bet: Team C(spread_value), confidence: X.X%"
-    recommended_bet_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+)\((?P<spread_value>[^)]+)\), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+    # More specific pattern for spread value regression section
+    spread_value_section_pattern = re.compile(
+        r'---------------XGBoost Spread Value Regression Predictions---------------.*?'
+        r'(?P<away_team>[\w ]+) @ (?P<home_team>[\w ]+)\n.*?'
+        r'Recommended Bet: (?P<recommended_team>[\w ]+) (?P<spread_direction>Home|Away) (?P<spread_value>[+-]?\d+\.?\d*)\n.*?'
+        r'Edge vs Line: (?P<edge_info>[^\n]+)',
+        re.MULTILINE | re.DOTALL
+    )
     
-    for match in recommended_bet_pattern.finditer(stdout):
+    # Also try a simpler pattern for the specific format we see
+    simple_spread_pattern = re.compile(
+        r'Recommended Bet: (?P<recommended_team>[\w ]+) (?P<spread_direction>Home|Away) (?P<spread_value>[+-]?\d+\.?\d*)',
+        re.MULTILINE
+    )
+    
+    # Try the spread value section pattern first
+    for match in spread_value_section_pattern.finditer(stdout):
         away_team = match.group('away_team').strip()
         home_team = match.group('home_team').strip()
         recommended_team = match.group('recommended_team').strip()
+        spread_direction = match.group('spread_direction').strip()
         spread_value = match.group('spread_value').strip()
-        confidence = match.group('confidence').strip()
+        edge_info = match.group('edge_info').strip()
         
         game_key = f"{away_team}:{home_team}"
         
-        # Format the recommended bet with only spread value
-        formatted_bet = f"{recommended_team} {spread_value}"
+        # Format the spread value with proper sign
+        if spread_direction == "Home":
+            formatted_spread = f"-{spread_value}" if not spread_value.startswith('-') else spread_value
+        else:  # Away
+            formatted_spread = f"+{spread_value}" if not spread_value.startswith('+') else spread_value
+        
+        # Extract confidence from edge info or use a default
+        confidence = "N/A"
+        if "confidence" in edge_info.lower():
+            confidence_match = re.search(r'(\d+\.?\d*)%', edge_info)
+            if confidence_match:
+                confidence = f"{confidence_match.group(1)}%"
+        
+        # Try to find ML confidence (winning team confidence) from the full output
+        # Look for ML confidence in the same game section
+        game_section_start = stdout.find(f"{away_team} @ {home_team}")
+        if game_section_start != -1:
+            # Look for ML confidence in the ML predictions section
+            ml_section_start = stdout.find("---------------XGBoost ML Model Predictions---------------")
+            if ml_section_start != -1 and ml_section_start < game_section_start:
+                # Find the ML section for this specific game
+                ml_game_section = stdout[ml_section_start:game_section_start + 1000]
+                ml_confidence_match = re.search(r'Prediction: [^\(]+\((\d+\.?\d*)% confidence\)', ml_game_section)
+                if ml_confidence_match:
+                    confidence = f"{ml_confidence_match.group(1)}%"
+        
+        # Format the recommended bet
+        formatted_bet = f"{recommended_team} {formatted_spread}"
         
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
             'recommended_team': recommended_team,
-            'spread_value': spread_value,
-            'confidence': f"{confidence}%",
+            'spread_value': formatted_spread,
+            'confidence': confidence,
             'sport': 'CFB',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}%",
-            'spread_prediction': f"{recommended_team} {spread_value}",
-            'spread_line': spread_value,
-            'spread_confidence': f"{confidence}%"
+            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}",
+            'spread_prediction': formatted_bet,
+            'spread_line': formatted_spread,
+            'spread_confidence': confidence
         }
     
-    # Also look for format without parentheses: "Team A vs Team B, recommended bet: Team C spread_value, confidence: X.X%"
+    # If no games found with complex pattern, try the simple pattern
     if not games:
-        recommended_bet_pattern_no_parens = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<spread_value>[^,]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+        # Find all game headers first to get team names
+        game_headers = re.findall(r'(?P<away_team>[\w ]+) @ (?P<home_team>[\w ]+)', stdout)
         
-        for match in recommended_bet_pattern_no_parens.finditer(stdout):
+        # Find all recommended bets
+        for i, match in enumerate(simple_spread_pattern.finditer(stdout)):
+            if i < len(game_headers):
+                away_team, home_team = game_headers[i]
+                recommended_team = match.group('recommended_team').strip()
+                spread_direction = match.group('spread_direction').strip()
+                spread_value = match.group('spread_value').strip()
+                
+                game_key = f"{away_team}:{home_team}"
+                
+                # Format the spread value with proper sign
+                if spread_direction == "Home":
+                    formatted_spread = f"-{spread_value}" if not spread_value.startswith('-') else spread_value
+                else:  # Away
+                    formatted_spread = f"+{spread_value}" if not spread_value.startswith('+') else spread_value
+                
+                # Try to extract confidence from the surrounding text
+                confidence = "N/A"
+                
+                # First, try to find ML confidence (winning team confidence) from the full output
+                game_section_start = stdout.find(f"{away_team} @ {home_team}")
+                if game_section_start != -1:
+                    # Look for ML confidence in the ML predictions section
+                    ml_section_start = stdout.find("---------------XGBoost ML Model Predictions---------------")
+                    if ml_section_start != -1 and ml_section_start < game_section_start:
+                        # Find the ML section for this specific game
+                        ml_game_section = stdout[ml_section_start:game_section_start + 1000]
+                        ml_confidence_match = re.search(r'Prediction: [^\(]+\((\d+\.?\d*)% confidence\)', ml_game_section)
+                        if ml_confidence_match:
+                            confidence = f"{ml_confidence_match.group(1)}%"
+                
+                # If no ML confidence found, try other patterns
+                if confidence == "N/A":
+                    # Look for confidence in the same section
+                    section_start = max(0, match.start() - 500)
+                    section_end = min(len(stdout), match.end() + 200)
+                    section_text = stdout[section_start:section_end]
+                    
+                    # Try multiple confidence patterns
+                    confidence_patterns = [
+                        r'(\d+\.?\d*)% confidence',
+                        r'confidence: (\d+\.?\d*)%',
+                        r'(\d+\.?\d*)% over baseline',
+                        r'Edge: ([\d.+-]+)%'
+                    ]
+                    
+                    for pattern in confidence_patterns:
+                        confidence_match = re.search(pattern, section_text)
+                        if confidence_match:
+                            confidence = f"{confidence_match.group(1)}%"
+                            break
+                
+                # Format the recommended bet
+                formatted_bet = f"{recommended_team} {formatted_spread}"
+                
+                games[game_key] = {
+                    'away_team': away_team,
+                    'home_team': home_team,
+                    'recommended_team': recommended_team,
+                    'spread_value': formatted_spread,
+                    'confidence': confidence,
+                    'sport': 'CFB',
+                    'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}",
+                    'spread_prediction': formatted_bet,
+                    'spread_line': formatted_spread,
+                    'spread_confidence': confidence
+                }
+    
+    # If no spread value predictions found, look for the old format
+    if not games:
+        # Look for the specific recommended bet format from CFB main.py
+        # Pattern: "Team A vs Team B, recommended bet: Team C(spread_value), confidence: X.X%"
+        recommended_bet_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+)\((?P<spread_value>[^)]+)\), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+        
+        for match in recommended_bet_pattern.finditer(stdout):
             away_team = match.group('away_team').strip()
             home_team = match.group('home_team').strip()
             recommended_team = match.group('recommended_team').strip()
@@ -137,6 +250,35 @@ def parse_cfb_predictions(stdout):
                 'spread_line': spread_value,
                 'spread_confidence': f"{confidence}%"
             }
+        
+        # Also look for format without parentheses: "Team A vs Team B, recommended bet: Team C spread_value, confidence: X.X%"
+        if not games:
+            recommended_bet_pattern_no_parens = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<spread_value>[^,]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+            
+            for match in recommended_bet_pattern_no_parens.finditer(stdout):
+                away_team = match.group('away_team').strip()
+                home_team = match.group('home_team').strip()
+                recommended_team = match.group('recommended_team').strip()
+                spread_value = match.group('spread_value').strip()
+                confidence = match.group('confidence').strip()
+                
+                game_key = f"{away_team}:{home_team}"
+                
+                # Format the recommended bet with only spread value
+                formatted_bet = f"{recommended_team} {spread_value}"
+                
+                games[game_key] = {
+                    'away_team': away_team,
+                    'home_team': home_team,
+                    'recommended_team': recommended_team,
+                    'spread_value': spread_value,
+                    'confidence': f"{confidence}%",
+                    'sport': 'CFB',
+                    'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}%",
+                    'spread_prediction': f"{recommended_team} {spread_value}",
+                    'spread_line': spread_value,
+                    'spread_confidence': f"{confidence}%"
+                }
     
     # If no recommended bet format found, try parsing the detailed sections
     if not games:
@@ -150,44 +292,73 @@ def parse_cfb_predictions(stdout):
                 games.update(parse_cfb_spread_predictions(section))
             elif "UO Model Predictions" in section:
                 games.update(parse_cfb_uo_predictions(section))
+    
+    # Extract ML confidence for all games and store it
+    for game_key, game_data in games.items():
+        away_team = game_data.get('away_team', '')
+        home_team = game_data.get('home_team', '')
         
-        # Create comprehensive recommended bets for each game in the requested format
-        for game_key, game_data in games.items():
-            recommendations = []
+        # Look for ML confidence in the ML predictions section
+        ml_section_start = stdout.find("---------------XGBoost ML Model Predictions---------------")
+        if ml_section_start != -1:
+            # Find the ML section for this specific game
+            game_pattern = f"{away_team} @ {home_team}"
+            game_start = stdout.find(game_pattern, ml_section_start)
+            if game_start != -1:
+                # Look for confidence in the ML section for this game
+                ml_game_section = stdout[game_start:game_start + 1000]
+                ml_confidence_match = re.search(r'Prediction: [^\(]+\((\d+\.?\d*)% confidence\)', ml_game_section)
+                if ml_confidence_match:
+                    game_data['ml_confidence'] = f"{ml_confidence_match.group(1)}%"
+    
+    # Create comprehensive recommended bets for each game in the requested format
+    for game_key, game_data in games.items():
+        recommendations = []
+        
+        # Add ML recommendation if available
+        if 'ml_prediction' in game_data and game_data['ml_prediction']:
+            recommendations.append(f"{game_data['ml_prediction']} ML ({game_data.get('ml_confidence', 'N/A')})")
+        
+        # Add Spread recommendation if available
+        if 'spread_prediction' in game_data and game_data['spread_prediction']:
+            recommendations.append(f"{game_data['spread_prediction']} ({game_data.get('spread_confidence', 'N/A')})")
+        
+        # Add OU recommendation if available
+        if 'ou_prediction' in game_data and game_data['ou_prediction']:
+            recommendations.append(f"{game_data['ou_prediction']} ({game_data.get('ou_confidence', 'N/A')})")
+        
+        # Create the main recommended bet in the requested format
+        main_recommendation = ""
+        main_confidence = "0"
+        spread_value = "N/A"
+        
+        if recommendations:
+            main_recommendation = recommendations[0]
             
-            # Add ML recommendation if available
-            if 'ml_prediction' in game_data and game_data['ml_prediction']:
-                recommendations.append(f"{game_data['ml_prediction']} ML ({game_data.get('ml_confidence', 'N/A')})")
-            
-            # Add Spread recommendation if available
-            if 'spread_prediction' in game_data and game_data['spread_prediction']:
-                recommendations.append(f"{game_data['spread_prediction']} ({game_data.get('spread_confidence', 'N/A')})")
-            
-            # Add OU recommendation if available
-            if 'ou_prediction' in game_data and game_data['ou_prediction']:
-                recommendations.append(f"{game_data['ou_prediction']} ({game_data.get('ou_confidence', 'N/A')})")
-            
-            # Create the main recommended bet in the requested format
-            main_recommendation = ""
-            main_confidence = "0"
-            spread_value = "N/A"
-            
-            if recommendations:
-                main_recommendation = recommendations[0]
-                
-                # Extract confidence and spread value for the requested format
-                if 'spread_confidence' in game_data and game_data['spread_confidence']:
-                    main_confidence = game_data['spread_confidence']
-                    # Extract spread value from betting lines if available
-                    if 'spread_line' in game_data and game_data['spread_line'] != 'N/A':
-                        spread_value = game_data['spread_line']
-                elif 'ml_confidence' in game_data and game_data['ml_confidence']:
-                    main_confidence = game_data['ml_confidence']
-                elif 'ou_confidence' in game_data and game_data['ou_confidence']:
-                    main_confidence = game_data['ou_confidence']
+            # Extract confidence and spread value for the requested format
+            if 'spread_confidence' in game_data and game_data['spread_confidence']:
+                main_confidence = game_data['spread_confidence']
+                # Extract spread value from betting lines if available
+                if 'spread_line' in game_data and game_data['spread_line'] != 'N/A':
+                    spread_value = game_data['spread_line']
+            elif 'ml_confidence' in game_data and game_data['ml_confidence']:
+                main_confidence = game_data['ml_confidence']
+            elif 'ou_confidence' in game_data and game_data['ou_confidence']:
+                main_confidence = game_data['ou_confidence']
             
             # Create the recommended bet in the requested format: "Team A vs Team B, recommended bet: Team A [spread value], confidence: [confidence percent against spread value]"
-            if 'spread_prediction' in game_data and game_data['spread_prediction']:
+            if 'spread_value' in game_data and game_data['spread_value'] != 'N/A':
+                # Use the spread value from the regression prediction
+                recommended_team = game_data.get('recommended_team', 'Unknown')
+                spread_value = game_data['spread_value']
+                
+                # Prioritize ML confidence (winning team confidence) over other confidence values
+                confidence = game_data.get('ml_confidence', game_data.get('confidence', 'N/A'))
+                if confidence == 'N/A' or not confidence:
+                    confidence = game_data.get('confidence', 'N/A')
+                
+                game_data['raw_prediction'] = f"{game_data['away_team']} vs {game_data['home_team']}, recommended bet: {recommended_team} {spread_value}, confidence: {confidence}"
+            elif 'spread_prediction' in game_data and game_data['spread_prediction']:
                 # For spread predictions, use the format: "Team A vs Team B, recommended bet: Team A [spread value], confidence: [confidence percent against spread value]"
                 recommended_team = game_data['spread_prediction'].split()[0]  # Extract team name
                 # Try to extract spread value from betting lines or use a default

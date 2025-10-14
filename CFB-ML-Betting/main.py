@@ -217,6 +217,180 @@ def createTodaysCFBGames(games_df, teams_con, odds_con, season="2024-25"):
         return None, None, None
 
 
+def calculate_spread_prediction(home_stats, away_stats, betting_lines=None):
+    """Calculate spread prediction based on team stats and betting lines."""
+    try:
+        # Calculate basic spread based on team strength differential
+        # This is a simplified calculation - in practice, you'd use more sophisticated metrics
+        
+        # Get key stats for spread calculation
+        home_off_eff = home_stats.get('offensive_efficiency', 0) if home_stats is not None else 0
+        home_def_eff = home_stats.get('defensive_efficiency', 0) if home_stats is not None else 0
+        away_off_eff = away_stats.get('offensive_efficiency', 0) if away_stats is not None else 0
+        away_def_eff = away_stats.get('defensive_efficiency', 0) if away_stats is not None else 0
+        
+        # Calculate net efficiency (offensive - defensive)
+        home_net_eff = home_off_eff - home_def_eff
+        away_net_eff = away_off_eff - away_def_eff
+        
+        # Calculate predicted point differential
+        predicted_diff = home_net_eff - away_net_eff
+        
+        # If we have betting lines, compare our prediction to the line
+        if betting_lines and betting_lines.get('spread'):
+            spread_line = betting_lines.get('spread', 0)
+            # Calculate how much our prediction differs from the line
+            spread_value = abs(predicted_diff - spread_line)
+            confidence = min(spread_value / 7.0, 1.0)  # Normalize confidence based on 7-point spread
+        else:
+            spread_value = abs(predicted_diff)
+            confidence = min(spread_value / 14.0, 1.0)  # Normalize confidence based on 14-point spread
+        
+        return {
+            'predicted_diff': predicted_diff,
+            'spread_value': spread_value,
+            'confidence': confidence,
+            'home_net_eff': home_net_eff,
+            'away_net_eff': away_net_eff
+        }
+    except Exception as e:
+        print(f"Error calculating spread prediction: {e}")
+        return {
+            'predicted_diff': 0,
+            'spread_value': 0,
+            'confidence': 0,
+            'home_net_eff': 0,
+            'away_net_eff': 0
+        }
+
+def run_xgboost_spread_value_predictions(X, game_info, prediction_results=None):
+    """Run XGBoost spread value regression predictions for today's games."""
+    print(f"---------------XGBoost Spread Value Regression Predictions---------------")
+    
+    # Connect to database to load models
+    try:
+        # Find the best spread value model file
+        import os
+        import glob
+        
+        # Use absolute path for model files
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        models_dir = os.path.join(current_dir, "Models")
+        
+        # Check if Models directory exists
+        if not os.path.exists(models_dir):
+            print(f"Models directory not found at: {models_dir}")
+            print("Please train the spread value model first using XGBoost_Model_Spread.py")
+            return None
+        
+        model_files = glob.glob(os.path.join(models_dir, "XGBoost_Spread_Value_*_MSE.json"))
+        if not model_files:
+            print(f"No spread value model found in {models_dir}")
+            print("Please train the spread value model first using XGBoost_Model_Spread.py")
+            return None
+        
+        # Get the model with lowest MSE
+        best_model_file = min(model_files, key=lambda x: float(x.split('_')[-2]))
+        print(f"Loading spread value model: {best_model_file}")
+        
+        # Load model
+        model = xgb.Booster()
+        model.load_model(best_model_file)
+        
+        # Make predictions
+        dmatrix = xgb.DMatrix(X)
+        spread_predictions = model.predict(dmatrix)
+        
+        # Display results and collect for CSV export
+        print(f"\nSpread Value Predictions for Today's Games:")
+        print("-" * 80)
+        
+        for i, (game, pred_spread) in enumerate(zip(game_info, spread_predictions)):
+            home = game['home']
+            away = game['away']
+            kickoff = game['kickoff']
+            venue = game.get('venue', 'TBD')
+            
+            # Initialize game in prediction_results if not exists
+            game_key = f"{away}:{home}"
+            if game_key not in prediction_results:
+                prediction_results[game_key] = {
+                    'away_team': away,
+                    'home_team': home,
+                    'kickoff': kickoff,
+                    'venue': venue
+                }
+                
+                # Add betting lines if available
+                betting_lines = game.get('betting_lines')
+                if betting_lines:
+                    prediction_results[game_key]['spread_line'] = betting_lines.get('spread', 'N/A')
+                    prediction_results[game_key]['over_under_line'] = betting_lines.get('over_under', 'N/A')
+                    prediction_results[game_key]['ml_home_line'] = betting_lines.get('ml_home', 'N/A')
+                    prediction_results[game_key]['ml_away_line'] = betting_lines.get('ml_away', 'N/A')
+                else:
+                    prediction_results[game_key]['spread_line'] = 'N/A'
+                    prediction_results[game_key]['over_under_line'] = 'N/A'
+                    prediction_results[game_key]['ml_home_line'] = 'N/A'
+                    prediction_results[game_key]['ml_away_line'] = 'N/A'
+            
+            # Calculate spread analysis
+            betting_lines = game.get('betting_lines')
+            spread_line = betting_lines.get('spread', 0) if betting_lines else 0
+            
+            # Determine prediction
+            if pred_spread > 0:
+                prediction = f"Home wins by {pred_spread:.1f}"
+                recommended_team = home
+                spread_direction = f"Home -{abs(pred_spread):.1f}"
+            else:
+                prediction = f"Away wins by {abs(pred_spread):.1f}"
+                recommended_team = away
+                spread_direction = f"Away +{abs(pred_spread):.1f}"
+            
+            # Calculate spread value vs betting line
+            if spread_line != 0:
+                spread_value = abs(pred_spread - spread_line)
+                edge = abs(pred_spread) - abs(spread_line)
+                edge_direction = "favorable" if edge > 0 else "unfavorable"
+            else:
+                spread_value = abs(pred_spread)
+                edge = 0
+                edge_direction = "no line"
+            
+            print(f"{away} @ {home}")
+            print(f"  Kickoff: {kickoff}")
+            print(f"  Venue: {venue}")
+            print(f"  Predicted Margin: {pred_spread:+.1f} points")
+            print(f"  Prediction: {prediction}")
+            print(f"  Recommended Bet: {recommended_team} {spread_direction}")
+            print(f"  Spread Value: {spread_value:.1f} points")
+            print(f"  Edge vs Line: {edge:+.1f} points ({edge_direction})")
+            
+            # Show betting lines if available
+            if betting_lines:
+                print(f"  Betting Lines: Spread {betting_lines.get('spread', 'N/A')}, O/U {betting_lines.get('over_under', 'N/A')}")
+                print(f"  ML Lines: Home {betting_lines.get('ml_home', 'N/A')}, Away {betting_lines.get('ml_away', 'N/A')}")
+            else:
+                print(f"  Betting Lines: Not available")
+            
+            # Store results for CSV
+            prediction_results[game_key]['spread_value_prediction'] = f"{pred_spread:+.1f} points"
+            prediction_results[game_key]['spread_value_margin'] = f"{pred_spread:+.1f}"
+            prediction_results[game_key]['spread_value_recommendation'] = f"{recommended_team} {spread_direction}"
+            prediction_results[game_key]['spread_value_value'] = f"{spread_value:.1f} points"
+            prediction_results[game_key]['spread_value_edge'] = f"{edge:+.1f} points ({edge_direction})"
+            print()
+        
+        print("=" * 80)
+        return prediction_results
+        
+    except Exception as e:
+        print(f"Error running spread value predictions: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def run_xgboost_predictions(X, game_info, model_type="ML", prediction_results=None):
     """Run XGBoost predictions for today's games."""
     print(f"---------------XGBoost {model_type} Model Predictions---------------")
@@ -339,26 +513,59 @@ def run_xgboost_predictions(X, game_info, model_type="ML", prediction_results=No
                 
             elif model_type == "Spread":
                 prob = predictions_proba[i]
-                confidence = max(prob, 1-prob)
-                # Convert probability to spread confidence
-                spread_confidence = confidence * 100
+                model_confidence = max(prob, 1-prob)
+                
+                # Get betting lines for spread calculation
+                betting_lines = game.get('betting_lines')
+                spread_line = betting_lines.get('spread', 0) if betting_lines else 0
+                
+                # Calculate detailed spread prediction using team stats
+                # We need to get the team stats for this calculation
+                # For now, we'll use the model prediction and betting lines
+                
+                # Determine which team covers based on model prediction
+                if pred == 1:  # Home covers
+                    covering_team = home
+                    spread_direction = f"Home -{abs(spread_line)}" if spread_line != 0 else "Home favored"
+                    recommended_bet = f"{home} -{abs(spread_line)}" if spread_line != 0 else f"{home}"
+                else:  # Away covers
+                    covering_team = away
+                    spread_direction = f"Away +{abs(spread_line)}" if spread_line != 0 else "Away favored"
+                    recommended_bet = f"{away} +{abs(spread_line)}" if spread_line != 0 else f"{away}"
+                
+                # Calculate spread value based on model confidence
+                if spread_line != 0:
+                    # Spread value is the confidence multiplied by the spread line
+                    spread_value = abs(spread_line) * model_confidence
+                else:
+                    spread_value = 0
+                
+                # Calculate edge (how much better our prediction is vs the line)
+                edge = model_confidence - 0.5  # Edge over 50% baseline
+                edge_percentage = edge * 100
                 
                 print(f"{away} @ {home}")
                 print(f"  Kickoff: {kickoff}")
                 print(f"  Venue: {venue}")
-                print(f"  Prediction: {prediction_labels[pred]} ({confidence:.1%} confidence)")
-                print(f"  Spread Value: {spread_confidence:.1f}% confidence")
+                print(f"  Model Prediction: {prediction_labels[pred]} ({model_confidence:.1%} confidence)")
+                print(f"  Recommended Bet: {recommended_bet}")
+                print(f"  Spread Value: {spread_value:.1f} points")
+                print(f"  Edge: {edge_percentage:+.1f}% over baseline")
                 
                 # Show betting lines if available
-                betting_lines = game.get('betting_lines')
                 if betting_lines:
                     print(f"  Betting Lines: Spread {betting_lines.get('spread', 'N/A')}, O/U {betting_lines.get('over_under', 'N/A')}")
                     print(f"  ML Lines: Home {betting_lines.get('ml_home', 'N/A')}, Away {betting_lines.get('ml_away', 'N/A')}")
+                else:
+                    print(f"  Betting Lines: Not available")
                 
                 # Store results for CSV
                 prediction_results[game_key]['spread_prediction'] = prediction_labels[pred]
-                prediction_results[game_key]['spread_confidence'] = f"{confidence:.1%} confidence"
-                prediction_results[game_key]['spread_value'] = f"{spread_confidence:.1f}% confidence"
+                prediction_results[game_key]['spread_confidence'] = f"{model_confidence:.1%}"
+                prediction_results[game_key]['spread_value'] = f"{spread_value:.1f} points"
+                prediction_results[game_key]['predicted_spread'] = spread_direction
+                prediction_results[game_key]['recommended_bet'] = recommended_bet
+                prediction_results[game_key]['edge'] = f"{edge_percentage:+.1f}%"
                 
             else:  # UO
                 prob = predictions_proba[i][pred]
@@ -386,6 +593,61 @@ def run_xgboost_predictions(X, game_info, model_type="ML", prediction_results=No
         import traceback
         traceback.print_exc()
         return None
+
+def export_predictions_to_csv(prediction_results, filename=None):
+    """Export prediction results to CSV file."""
+    if not prediction_results:
+        print("No prediction results to export.")
+        return
+    
+    try:
+        # Create DataFrame from prediction results
+        rows = []
+        for game_key, data in prediction_results.items():
+            row = {
+                'game_key': game_key,
+                'away_team': data.get('away_team', ''),
+                'home_team': data.get('home_team', ''),
+                'kickoff': data.get('kickoff', ''),
+                'venue': data.get('venue', ''),
+                'spread_line': data.get('spread_line', 'N/A'),
+                'over_under_line': data.get('over_under_line', 'N/A'),
+                'ml_home_line': data.get('ml_home_line', 'N/A'),
+                'ml_away_line': data.get('ml_away_line', 'N/A'),
+                'ml_prediction': data.get('ml_prediction', ''),
+                'ml_confidence': data.get('ml_confidence', ''),
+                'ml_value': data.get('ml_value', ''),
+                'spread_prediction': data.get('spread_prediction', ''),
+                'spread_confidence': data.get('spread_confidence', ''),
+                'spread_value': data.get('spread_value', ''),
+                'predicted_spread': data.get('predicted_spread', ''),
+                'recommended_bet': data.get('recommended_bet', ''),
+                'edge': data.get('edge', ''),
+                'spread_value_prediction': data.get('spread_value_prediction', ''),
+                'spread_value_margin': data.get('spread_value_margin', ''),
+                'spread_value_recommendation': data.get('spread_value_recommendation', ''),
+                'spread_value_value': data.get('spread_value_value', ''),
+                'spread_value_edge': data.get('spread_value_edge', ''),
+                'ou_prediction': data.get('ou_prediction', ''),
+                'ou_confidence': data.get('ou_confidence', '')
+            }
+            rows.append(row)
+        
+        df = pd.DataFrame(rows)
+        
+        # Generate filename if not provided
+        if filename is None:
+            today = datetime.now().strftime("%Y%m%d")
+            filename = f"cfb_predictions_{today}.csv"
+        
+        # Export to CSV
+        df.to_csv(filename, index=False)
+        print(f"Predictions exported to: {filename}")
+        
+    except Exception as e:
+        print(f"Error exporting predictions to CSV: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def main():
@@ -455,18 +717,26 @@ def main():
         if args.spread:
             prediction_results = run_xgboost_predictions(X, game_info, "Spread", prediction_results)
         
+        if args.spread_value:
+            prediction_results = run_xgboost_spread_value_predictions(X, game_info, prediction_results)
+        
         if args.uo:
             prediction_results = run_xgboost_predictions(X, game_info, "UO", prediction_results)
         
         if args.all:
             prediction_results = run_xgboost_predictions(X, game_info, "ML", prediction_results)
             prediction_results = run_xgboost_predictions(X, game_info, "Spread", prediction_results)
+            prediction_results = run_xgboost_spread_value_predictions(X, game_info, prediction_results)
             prediction_results = run_xgboost_predictions(X, game_info, "UO", prediction_results)
         
-        if not any([args.ml, args.spread, args.uo, args.all]):
-            print("No prediction type specified. Use -ml, -spread, -uo, or -all")
+        if not any([args.ml, args.spread, args.spread_value, args.uo, args.all]):
+            print("No prediction type specified. Use -ml, -spread, -spread-value, -uo, or -all")
             return
         
+        # Export results to CSV if we have any predictions and export is requested
+        if prediction_results and (args.export_csv or args.csv_filename):
+            filename = args.csv_filename if args.csv_filename else None
+            export_predictions_to_csv(prediction_results, filename)
     
     finally:
         teams_con.close()
@@ -477,7 +747,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='College Football Betting Predictions')
     parser.add_argument('-ml', action='store_true', help='Run Moneyline predictions')
     parser.add_argument('-spread', action='store_true', help='Run Spread predictions')
+    parser.add_argument('-spread-value', action='store_true', help='Run Spread Value regression predictions')
     parser.add_argument('-uo', action='store_true', help='Run Over/Under predictions')
     parser.add_argument('-all', action='store_true', help='Run all prediction types')
+    parser.add_argument('--export-csv', action='store_true', help='Export results to CSV file')
+    parser.add_argument('--csv-filename', type=str, help='Custom CSV filename for export')
     args = parser.parse_args()
     main()
