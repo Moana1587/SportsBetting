@@ -1556,7 +1556,7 @@ def parse_nhl_predictions(stdout):
         return {}
     
     # Look for the new TXT Export format: "Team A vs Team B, recommended bet: Team C, Spread:X.X, ML:Y, OU:Z.Z, Confidence:W.W%"
-    txt_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+), Spread:(?P<spread_value>[\d.]+), ML:(?P<ml_value>[\d+-]+), OU:(?P<ou_value>[\d.]+), Confidence:(?P<confidence>[\d.]+)%', re.MULTILINE)
+    txt_pattern = re.compile(r'(?P<home_team>[\w .]+) vs (?P<away_team>[\w .]+), recommended bet: (?P<recommended_team>[\w .]+), Spread:(?P<spread_value>[\d.]+), ML:(?P<ml_value>[\d+-]+), OU:(?P<ou_value>[\d.]+), Confidence:(?P<confidence>[\d.]+)%', re.MULTILINE)
     
     for match in txt_pattern.finditer(stdout):
         home_team = match.group('home_team').strip()
