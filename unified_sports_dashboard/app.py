@@ -748,7 +748,7 @@ def fetch_mlb_predictions(ttl_hash=None):
     try:
         cmd = ["python", "main.py", "-xgb"]
         result = subprocess.run(cmd, cwd=PROJECT_PATHS['MLB'], 
-                              capture_output=True, text=True, timeout=20)
+                              capture_output=True, text=True, timeout=30)
         
         if result.returncode != 0:
             print(f"MLB command failed with return code {result.returncode}")

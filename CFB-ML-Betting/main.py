@@ -82,7 +82,7 @@ def clean_team_name(team_name):
         'Coastal Carolina Chanticleers': 'Coastal Carolina',
         'Colorado Buffaloes': 'Colorado',
         'Colorado State Rams': 'Colorado State',
-        'Delaware Fightin\' Blue Hens': 'Delaware',
+        'Delaware Blue Hens': 'Delaware',
         'Duke Blue Devils': 'Duke',
         'East Carolina Pirates': 'East Carolina',
         'Eastern Michigan Eagles': 'Eastern Michigan',
