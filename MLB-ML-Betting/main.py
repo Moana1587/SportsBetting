@@ -15,7 +15,8 @@ from src.Predict import NN_Runner, XGBoost_Runner
 from src.Utils.tools import create_todays_games_from_odds, get_json_data, to_data_frame, get_todays_games_json, create_todays_games
 
 # MLB API URLs
-todays_games_url = 'https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=' + datetime.today().strftime('%Y-%m-%d')
+# ESPN API for today's games (updated to use ESPN API)
+espn_games_url = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=' + datetime.today().strftime('%Y%m%d')
 data_url = 'https://bdfed.stitch.mlbinfra.com/bdfed/stats/team?env=prod&sportId=1&gameType=R&group=hitting&stats=season&season=2024&limit=1000&offset=0'
 
 
@@ -157,27 +158,42 @@ def createTodaysGames(games, df, odds):
 
 
 def get_todays_mlb_games():
-    """Fetch today's MLB games from the MLB Stats API"""
+    """Fetch today's MLB games from the ESPN API"""
     try:
-        response = requests.get(todays_games_url)
+        # Use ESPN API for today's games
+        today = datetime.today().strftime('%Y%m%d')
+        espn_url = f'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}'
+        
+        response = requests.get(espn_url)
         response.raise_for_status()
         data = response.json()
         
         games = []
-        if 'dates' in data and len(data['dates']) > 0:
-            date_data = data['dates'][0]
-            if 'games' in date_data:
-                for game in date_data['games']:
-                    # Include regular season games (gameType 'R'), playoff games (gameType 'D', 'L', 'W', 'F'), and spring training (gameType 'S')
-                    if game.get('gameType') in ['R', 'D', 'L', 'W', 'F', 'S']:
-                        away_team = game['teams']['away']['team']['name']
-                        home_team = game['teams']['home']['team']['name']
-                        games.append([home_team, away_team])
-                        print(f"Found game: {away_team} @ {home_team} (Type: {game.get('gameType')})")
+        if 'events' in data:
+            for event in data['events']:
+                # Check if the event has competitions and is scheduled
+                if 'competitions' in event and len(event['competitions']) > 0:
+                    competition = event['competitions'][0]
+                    
+                    # Check if the game is scheduled (not completed or in progress)
+                    if 'status' in competition and competition['status'].get('type', {}).get('state') == 'pre':
+                        # Extract team information from competitors
+                        home_team = None
+                        away_team = None
+                        
+                        for competitor in competition.get('competitors', []):
+                            if competitor.get('homeAway') == 'home':
+                                home_team = competitor['team']['name']
+                            elif competitor.get('homeAway') == 'away':
+                                away_team = competitor['team']['name']
+                        
+                        if home_team and away_team:
+                            games.append([home_team, away_team])
+                            print(f"Found game: {away_team} @ {home_team}")
         
         return games
     except Exception as e:
-        print(f"Error fetching today's games: {e}")
+        print(f"Error fetching today's games from ESPN API: {e}")
         return []
 
 
