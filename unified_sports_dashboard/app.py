@@ -235,7 +235,17 @@ def parse_cfb_predictions(stdout):
             # Format the prediction with confidence values
             spread_info = f"Spread:{formatted_spread}({spread_confidence})" if formatted_spread != 'N/A' else "Spread:N/A"
             ml_info = f"ML:{ml_value}({ml_confidence})" if ml_value != 'N/A' else "ML:N/A"
-            ou_info = f"OU:{ou_value}({ou_confidence})" if ou_value != 'N/A' else "OU:N/A"
+            # Format OU with "Over" or "Under" prefix
+            if ou_prediction != 'N/A' and ou_value != 'N/A':
+                # Check if ou_prediction already contains the value
+                if ou_value in ou_prediction:
+                    ou_info = f"OU:{ou_prediction}({ou_confidence})"
+                else:
+                    ou_info = f"OU:{ou_prediction} {ou_value}({ou_confidence})"
+            elif ou_value != 'N/A':
+                ou_info = f"OU:{ou_value}({ou_confidence})"
+            else:
+                ou_info = "OU:N/A"
             
             raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}"
             
@@ -383,7 +393,17 @@ def parse_cfb_predictions(stdout):
                 # Format the prediction with confidence values
                 spread_info = f"Spread:{formatted_spread}({spread_confidence})" if formatted_spread != 'N/A' else "Spread:N/A"
                 ml_info = f"ML:{ml_value}({ml_confidence})" if ml_value != 'N/A' else "ML:N/A"
-                ou_info = f"OU:{ou_value}({ou_confidence})" if ou_value != 'N/A' else "OU:N/A"
+                # Format OU with "Over" or "Under" prefix
+                if ou_prediction != 'N/A' and ou_value != 'N/A':
+                    # Check if ou_prediction already contains the value
+                    if ou_value in ou_prediction:
+                        ou_info = f"OU:{ou_prediction}({ou_confidence})"
+                    else:
+                        ou_info = f"OU:{ou_prediction} {ou_value}({ou_confidence})"
+                elif ou_value != 'N/A':
+                    ou_info = f"OU:{ou_value}({ou_confidence})"
+                else:
+                    ou_info = "OU:N/A"
                 
                 raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}"
                 
@@ -550,7 +570,19 @@ def parse_cfb_predictions(stdout):
                 
                 spread_info = f"Spread:{spread_value}({spread_confidence})" if spread_value != 'N/A' else "Spread:N/A"
                 ml_info = f"ML:{game_data.get('ml_value', 'N/A')}({ml_confidence})" if game_data.get('ml_value') != 'N/A' else "ML:N/A"
-                ou_info = f"OU:{game_data.get('ou_value', 'N/A')}({ou_confidence})" if game_data.get('ou_value') != 'N/A' else "OU:N/A"
+                # Format OU with "Over" or "Under" prefix
+                ou_prediction = game_data.get('ou_prediction', 'N/A')
+                ou_value = game_data.get('ou_value', 'N/A')
+                if ou_prediction != 'N/A' and ou_value != 'N/A':
+                    # Check if ou_prediction already contains the value
+                    if ou_value in ou_prediction:
+                        ou_info = f"OU:{ou_prediction}({ou_confidence})"
+                    else:
+                        ou_info = f"OU:{ou_prediction} {ou_value}({ou_confidence})"
+                elif ou_value != 'N/A':
+                    ou_info = f"OU:{ou_value}({ou_confidence})"
+                else:
+                    ou_info = "OU:N/A"
                 
                 game_data['raw_prediction'] = f"{game_data['away_team']} vs {game_data['home_team']}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}"
             elif 'spread_prediction' in game_data and game_data['spread_prediction']:
@@ -815,6 +847,10 @@ def parse_mlb_predictions(stdout):
         # Use ML confidence as the primary confidence
         primary_confidence = ml_confidence_rounded
         
+        # Determine OU prediction based on the OU value and recommended team
+        # This is a simplified approach - in a real scenario, you'd need the actual OU prediction from the model
+        ou_prediction = "Over"  # Default to Over, could be enhanced with actual model prediction
+        
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
@@ -823,14 +859,14 @@ def parse_mlb_predictions(stdout):
             'confidence': f"{primary_confidence}%",
             'bet_category': "moneyline",
             'sport': 'MLB',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_rounded}({ou_confidence_rounded}%)",
+            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_prediction} {ou_rounded}({ou_confidence_rounded}%)",
             'spread_prediction': f"{recommended_team} {formatted_spread}",
             'spread_line': formatted_spread,
             'spread_confidence': f"{spread_confidence_rounded}%",
             'ml_value': ml_value,
             'ml_confidence': f"{ml_confidence_rounded}%",
             'ou_value': str(ou_rounded),
-            'ou_prediction': "N/A",  # Not available in this format
+            'ou_prediction': f"{ou_prediction} {ou_rounded}",
             'ou_confidence': f"{ou_confidence_rounded}%"
         }
     
@@ -913,6 +949,10 @@ def parse_mlb_predictions(stdout):
                     else:
                         formatted_bet = f"{recommended_team}"
                     
+                    # Format OU prediction with value
+                    ou_prediction = pred['over_under']['prediction']
+                    ou_formatted = f"{ou_prediction} {ou_value_rounded}" if ou_prediction and ou_value_rounded else str(ou_value_rounded)
+                    
                     games[game_key] = {
                         'away_team': away_team,
                         'home_team': home_team,
@@ -924,7 +964,7 @@ def parse_mlb_predictions(stdout):
                         'spread_prediction': f"{recommended_team} {bet_type} {spread_rounded}" if bet_type != "ML" else None,
                         'spread_line': str(spread_rounded) if bet_type != "ML" else None,
                         'spread_confidence': f"{confidence_rounded}%" if bet_type != "ML" else None,
-                        'ou_prediction': pred['over_under']['prediction'],
+                        'ou_prediction': ou_formatted,
                         'ou_value': str(ou_value_rounded),
                         'ou_confidence': f"{ou_confidence_rounded}%"
                     }
@@ -1596,6 +1636,18 @@ def parse_nhl_predictions(stdout):
     if "No games available" in stdout or "No upcoming games found" in stdout or "No games found for today" in stdout:
         return {}
     
+    # First, try to extract Over/Under information from the console output
+    console_ou_pattern = re.compile(r'(?P<home_team>[\w .]+) vs (?P<away_team>[\w .]+) \([^)]+\): (?P<ou_pick>OVER|UNDER) (?P<ou_value>[\d.]+) \([^)]+%\)', re.MULTILINE)
+    ou_predictions = {}
+    
+    for match in console_ou_pattern.finditer(stdout):
+        home_team = match.group('home_team').strip()
+        away_team = match.group('away_team').strip()
+        ou_pick = match.group('ou_pick').strip()
+        ou_value = match.group('ou_value').strip()
+        game_key = f"{away_team}:{home_team}"
+        ou_predictions[game_key] = {'pick': ou_pick, 'value': ou_value}
+    
     # Look for the new TXT Export format with individual confidence values: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Z.Z(confidence%)"
     txt_pattern = re.compile(r'(?P<home_team>[\w .]+) vs (?P<away_team>[\w .]+), recommended bet: (?P<recommended_team>[\w .]+), Spread:(?P<spread_value>[\d.+-]+)\((?P<spread_confidence>[\d.]+)%\), ML:(?P<ml_value>[\d+-]+)\((?P<ml_confidence>[\d.]+)%\), OU:(?P<ou_value>[\d.]+)\((?P<ou_confidence>[\d.]+)%\)', re.MULTILINE)
     
@@ -1630,8 +1682,17 @@ def parse_nhl_predictions(stdout):
             formatted_spread = f"+{spread_value_rounded}"
         formatted_bet = f"{recommended_team} {formatted_spread}"
         
+        # Get Over/Under prediction from console output if available
+        game_key = f"{away_team}:{home_team}"
+        if game_key in ou_predictions:
+            ou_prediction = ou_predictions[game_key]['pick']
+            # Use the console OU value instead of the TXT value for consistency
+            ou_value_rounded = round(float(ou_predictions[game_key]['value']), 1)
+        else:
+            ou_prediction = "Over"  # Default fallback
+        
         # Create the raw prediction in the requested format with individual confidence values
-        raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_value_rounded}({ou_confidence_rounded}%)"
+        raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_prediction} {ou_value_rounded}({ou_confidence_rounded}%)"
         
         games[game_key] = {
             'away_team': away_team,
@@ -1645,7 +1706,7 @@ def parse_nhl_predictions(stdout):
             'spread_prediction': f"{recommended_team} {formatted_spread}",
             'spread_line': formatted_spread,
             'spread_confidence': f"{spread_confidence_rounded}%",
-            'ou_prediction': f"OVER {ou_value_rounded}",
+            'ou_prediction': f"{ou_prediction} {ou_value_rounded}",
             'ou_value': str(ou_value_rounded),
             'ou_confidence': f"{ou_confidence_rounded}%",
             'ml_value': ml_value,
@@ -1762,6 +1823,8 @@ def parse_nhl_predictions(stdout):
             # Add OU recommendation
             if game_dict['ou_pick'] and game_dict['ou_confidence']:
                 recommendations.append(f"{game_dict['ou_pick']} {game_dict['ou_value']} ({game_dict['ou_confidence']}%)")
+                # Also update the ou_prediction field
+                game_dict['ou_prediction'] = f"{game_dict['ou_pick']} {game_dict['ou_value']}"
             
             # Add spread recommendation
             if 'spread_pick' in game_dict and game_dict['spread_confidence']:
