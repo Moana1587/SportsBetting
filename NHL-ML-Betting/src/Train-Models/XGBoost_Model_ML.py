@@ -35,18 +35,17 @@ def load_dataset():
 
 def prepare_training_data(data):
     """Prepare the data for training by selecting features and target"""
-    # Target variables: ML_Home, ML_Away (regression) and Home-Team-Win (classification)
-    target = data[['ML_Home', 'ML_Away', 'Home-Team-Win']].copy()
+    # Target variables: ML_Home, ML_Away (regression)
+    target = data[['ML_Home', 'ML_Away']].copy()
     
-    # Ensure Home-Team-Win is properly formatted for binary classification
-    # Convert to int and ensure it's 0 or 1
-    target['Home-Team-Win'] = target['Home-Team-Win'].astype(int)
-    target['Home-Team-Win'] = target['Home-Team-Win'].clip(0, 1)  # Ensure values are 0 or 1
+    # Ensure ML values are properly formatted
+    target['ML_Home'] = target['ML_Home'].astype(float)
+    target['ML_Away'] = target['ML_Away'].astype(float)
     
     # Features: All team statistics and game data except target and non-predictive columns
     columns_to_drop = [
         'Score',           # Game outcome - not predictive
-        'Home-Team-Win',   # Target variable
+        'Home-Team-Win',   # Game outcome - not predictive
         'OU-Cover',        # Game outcome - not predictive
         'OU',              # Game outcome - not predictive
         'teamFullName',    # Team name - not predictive
@@ -82,17 +81,18 @@ def prepare_training_data(data):
     
     # Debug: Check target data types and values
     print(f"Target data types: {target.dtypes}")
-    print(f"Home-Team-Win unique values: {target['Home-Team-Win'].unique()}")
     print(f"ML_Home range: {target['ML_Home'].min()} to {target['ML_Home'].max()}")
     print(f"ML_Away range: {target['ML_Away'].min()} to {target['ML_Away'].max()}")
+    print(f"ML_Home unique values sample: {sorted(target['ML_Home'].unique())[:10]}")
+    print(f"ML_Away unique values sample: {sorted(target['ML_Away'].unique())[:10]}")
     
     return features, target
 
 def train_xgboost_model(features, target, num_iterations=300):
-    """Train single XGBoost model for ML_Home, ML_Away, and Home-Team-Win prediction"""
-    from sklearn.metrics import mean_squared_error, r2_score, accuracy_score
+    """Train XGBoost models specifically for ML_Home and ML_Away prediction"""
+    from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
     
-    print(f"Training single XGBoost model for ML_Home, ML_Away, and Home-Team-Win prediction with {num_iterations} iterations...")
+    print(f"Training XGBoost models for ML_Home and ML_Away prediction with {num_iterations} iterations...")
     
     results = []
     
@@ -100,61 +100,86 @@ def train_xgboost_model(features, target, num_iterations=300):
         # Split data
         x_train, x_test, y_train, y_test = train_test_split(features, target, test_size=0.1, random_state=x)
         
-        # Ensure win targets are properly formatted for binary classification
-        y_train_win = y_train.iloc[:, 2].astype(int)
-        y_test_win = y_test.iloc[:, 2].astype(int)
+        # Separate ML targets
+        y_train_ml_home = y_train.iloc[:, 0]  # ML_Home
+        y_train_ml_away = y_train.iloc[:, 1]  # ML_Away
+        y_test_ml_home = y_test.iloc[:, 0]
+        y_test_ml_away = y_test.iloc[:, 1]
         
         # Debug: Check target values
         if x == 0:  # Only print debug info for first iteration
             print(f"Training iteration {x} - Target shapes:")
-            print(f"  ML_Home: {y_train.iloc[:, 0].shape}, range: {y_train.iloc[:, 0].min():.2f} to {y_train.iloc[:, 0].max():.2f}")
-            print(f"  ML_Away: {y_train.iloc[:, 1].shape}, range: {y_train.iloc[:, 1].min():.2f} to {y_train.iloc[:, 1].max():.2f}")
-            print(f"  Win: {y_train_win.shape}, unique values: {np.unique(y_train_win)}")
+            print(f"  ML_Home: {y_train_ml_home.shape}, range: {y_train_ml_home.min():.2f} to {y_train_ml_home.max():.2f}")
+            print(f"  ML_Away: {y_train_ml_away.shape}, range: {y_train_ml_away.min():.2f} to {y_train_ml_away.max():.2f}")
         
-        # Create single XGBoost model for multi-output regression
-        # We'll use regression for all outputs and handle the classification differently
-        xgb_model = xgb.XGBRegressor(
-            max_depth=6,
+        # Create separate XGBoost models for ML_Home and ML_Away
+        xgb_ml_home = xgb.XGBRegressor(
+            max_depth=8,
             eta=0.01,
-            n_estimators=750,
+            n_estimators=1000,
             random_state=x,
-            objective='reg:squarederror'
+            objective='reg:squarederror',
+            subsample=0.8,
+            colsample_bytree=0.8
         )
         
-        # Train the model on all three outputs
-        xgb_model.fit(x_train, y_train)
+        xgb_ml_away = xgb.XGBRegressor(
+            max_depth=8,
+            eta=0.01,
+            n_estimators=1000,
+            random_state=x,
+            objective='reg:squarederror',
+            subsample=0.8,
+            colsample_bytree=0.8
+        )
+        
+        # Train models
+        xgb_ml_home.fit(x_train, y_train_ml_home)
+        xgb_ml_away.fit(x_train, y_train_ml_away)
         
         # Make predictions
-        predictions = xgb_model.predict(x_test)
+        pred_ml_home = xgb_ml_home.predict(x_test)
+        pred_ml_away = xgb_ml_away.predict(x_test)
         
-        # Calculate R² score for ML_Home and ML_Away (regression outputs)
-        r2_home = r2_score(y_test.iloc[:, 0], predictions[:, 0])  # ML_Home
-        r2_away = r2_score(y_test.iloc[:, 1], predictions[:, 1])  # ML_Away
+        # Calculate metrics for ML_Home
+        r2_home = r2_score(y_test_ml_home, pred_ml_home)
+        mse_home = mean_squared_error(y_test_ml_home, pred_ml_home)
+        mae_home = mean_absolute_error(y_test_ml_home, pred_ml_home)
         
-        # For Home-Team-Win, convert regression output to classification
-        # Round the prediction to 0 or 1 for binary classification
-        win_pred_rounded = np.round(predictions[:, 2]).astype(int)
-        win_pred_rounded = np.clip(win_pred_rounded, 0, 1)  # Ensure 0 or 1
-        acc_win = accuracy_score(y_test_win, win_pred_rounded)
+        # Calculate metrics for ML_Away
+        r2_away = r2_score(y_test_ml_away, pred_ml_away)
+        mse_away = mean_squared_error(y_test_ml_away, pred_ml_away)
+        mae_away = mean_absolute_error(y_test_ml_away, pred_ml_away)
         
-        # Calculate combined score (weighted average)
-        combined_score = (r2_home + r2_away + acc_win) / 3
+        # Calculate combined score (average R²)
+        combined_score = (r2_home + r2_away) / 2
         combined_score_percent = round(combined_score * 100, 1)
         
         results.append({
             'r2_home': r2_home,
             'r2_away': r2_away,
-            'acc_win': acc_win,
+            'mse_home': mse_home,
+            'mse_away': mse_away,
+            'mae_home': mae_home,
+            'mae_away': mae_away,
             'combined_score': combined_score,
-            'model': xgb_model
+            'model_home': xgb_ml_home,
+            'model_away': xgb_ml_away
         })
         
-        # Save best model
+        # Save best models
         if combined_score == max([r['combined_score'] for r in results]):
-            # Save the single model to one JSON file
-            model_path = f'../../Models/XGBoost_{combined_score_percent}%_ML_All-4.json'
-            xgb_model.save_model(model_path)
-            print(f"New best combined score: {combined_score_percent}% (ML_Home: {r2_home*100:.1f}%, ML_Away: {r2_away*100:.1f}%, Win: {acc_win*100:.1f}%) - Model saved to {model_path}")
+            # Save ML_Home model
+            model_home_path = f'../../Models/XGBoost_ML_Home_{combined_score_percent}%_R2-{r2_home*100:.1f}.json'
+            xgb_ml_home.save_model(model_home_path)
+            
+            # Save ML_Away model
+            model_away_path = f'../../Models/XGBoost_ML_Away_{combined_score_percent}%_R2-{r2_away*100:.1f}.json'
+            xgb_ml_away.save_model(model_away_path)
+            
+            print(f"New best combined score: {combined_score_percent}% (ML_Home R²: {r2_home*100:.1f}%, ML_Away R²: {r2_away*100:.1f}%)")
+            print(f"  ML_Home model saved to: {model_home_path}")
+            print(f"  ML_Away model saved to: {model_away_path}")
     
     return results
 
@@ -173,30 +198,36 @@ def main():
         # Extract results
         home_r2_scores = [r['r2_home'] for r in results]
         away_r2_scores = [r['r2_away'] for r in results]
-        win_acc_scores = [r['acc_win'] for r in results]
+        home_mse_scores = [r['mse_home'] for r in results]
+        away_mse_scores = [r['mse_away'] for r in results]
+        home_mae_scores = [r['mae_home'] for r in results]
+        away_mae_scores = [r['mae_away'] for r in results]
         combined_scores = [r['combined_score'] for r in results]
         
         # Print results
         print(f"\nTraining completed!")
-        print(f"\nSingle Multi-Output Model Results:")
+        print(f"\nML Prediction Model Results:")
         print(f"Best Combined Score: {max(combined_scores)*100:.1f}%")
         print(f"Average Combined Score: {np.mean(combined_scores)*100:.1f}%")
         print(f"Combined Score std: {np.std(combined_scores)*100:.1f}%")
         
-        print(f"\nML_Home (Output 1) Results:")
+        print(f"\nML_Home Model Results:")
         print(f"Best R²: {max(home_r2_scores)*100:.1f}%")
         print(f"Average R²: {np.mean(home_r2_scores)*100:.1f}%")
         print(f"R² std: {np.std(home_r2_scores)*100:.1f}%")
+        print(f"Best MSE: {min(home_mse_scores):.2f}")
+        print(f"Average MSE: {np.mean(home_mse_scores):.2f}")
+        print(f"Best MAE: {min(home_mae_scores):.2f}")
+        print(f"Average MAE: {np.mean(home_mae_scores):.2f}")
         
-        print(f"\nML_Away (Output 2) Results:")
+        print(f"\nML_Away Model Results:")
         print(f"Best R²: {max(away_r2_scores)*100:.1f}%")
         print(f"Average R²: {np.mean(away_r2_scores)*100:.1f}%")
         print(f"R² std: {np.std(away_r2_scores)*100:.1f}%")
-        
-        print(f"\nHome-Team-Win (Output 3) Results:")
-        print(f"Best Accuracy: {max(win_acc_scores)*100:.1f}%")
-        print(f"Average Accuracy: {np.mean(win_acc_scores)*100:.1f}%")
-        print(f"Accuracy std: {np.std(win_acc_scores)*100:.1f}%")
+        print(f"Best MSE: {min(away_mse_scores):.2f}")
+        print(f"Average MSE: {np.mean(away_mse_scores):.2f}")
+        print(f"Best MAE: {min(away_mae_scores):.2f}")
+        print(f"Average MAE: {np.mean(away_mae_scores):.2f}")
         
     except Exception as e:
         print(f"Error during training: {e}")

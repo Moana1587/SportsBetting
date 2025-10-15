@@ -432,8 +432,8 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
                     else:
                         ou_pred = float(ou_pred)
                     
-                    # Get OU value
-                    ou_value = todays_games_uo[i] if i < len(todays_games_uo) else 5.5
+                    # Get OU value - use predicted value if available, otherwise use default
+                    ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5)
                     
                     # Determine if prediction is over or under
                     if ou_pred > ou_value:
@@ -472,6 +472,22 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
                     spread_confidence = 0.0
                     spread_pick = "Unknown"
                 
+                # Get ML values from the prediction results
+                ml_home_value = 100  # Default ML value
+                ml_away_value = 100  # Default ML value
+                
+                if 'ml_predictions' in prediction_results and i < len(prediction_results['ml_predictions']):
+                    ml_pred = prediction_results['ml_predictions'][i]
+                    # Handle array conversion - the prediction is a numpy array from XGBoost
+                    if hasattr(ml_pred, '__len__') and len(ml_pred) > 0:
+                        if ml_pred.ndim == 2:
+                            ml_pred = ml_pred[0]  # Flatten 2D array to 1D
+                        
+                        if len(ml_pred) >= 2:
+                            # New model format: [ML_Home, ML_Away, Home-Team-Win]
+                            ml_home_value = int(round(ml_pred[0]))
+                            ml_away_value = int(round(ml_pred[1]))
+                
                 # Create row data
                 row_data = {
                     'Date': current_date,
@@ -479,17 +495,16 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
                     'Away_Team': away_team,
                     'ML_Winner': ml_winner,
                     'ML_Confidence': ml_confidence,
+                    'ML_Home_Value': ml_home_value,
+                    'ML_Away_Value': ml_away_value,
                     'Home_ML_Odds': home_team_odds[i] if i < len(home_team_odds) else -110,
                     'Away_ML_Odds': away_team_odds[i] if i < len(away_team_odds) else -110,
                     'OU_Pick': ou_pick,
-                    'OU_Value': todays_games_uo[i] if i < len(todays_games_uo) else 5.5,
+                    'OU_Value': prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5),
                     'OU_Confidence': ou_confidence,
                     'Spread_Pick': spread_pick,
                     'Spread_Value': todays_games_spread[i] if i < len(todays_games_spread) else 0,
-                    'Spread_Confidence': spread_confidence,
-                    'Model_ML_Accuracy': '64.9%',
-                    'Model_UO_Accuracy': '49.1%',
-                    'Model_Spread_Accuracy': '100.0%'
+                    'Spread_Confidence': spread_confidence
                 }
                 
                 csv_data.append(row_data)
@@ -506,7 +521,7 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
             print("=" * 40)
             for _, row in df.iterrows():
                 print(f"{row['Away_Team']} @ {row['Home_Team']}")
-                print(f"  ML: {row['ML_Winner']} ({row['ML_Confidence']}%)")
+                print(f"  ML: {row['ML_Winner']} ({row['ML_Confidence']}%) - Home: {row['ML_Home_Value']}, Away: {row['ML_Away_Value']}")
                 print(f"  O/U: {row['OU_Pick']} {row['OU_Value']} ({row['OU_Confidence']}%)")
                 print(f"  Spread: {row['Spread_Pick']} ({row['Spread_Confidence']}%)")
                 print()
@@ -529,8 +544,8 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
         # Process each game
         for i, (home_team, away_team) in enumerate(games):
             if i < len(todays_games_uo):
-                # Get OU value
-                ou_value = todays_games_uo[i] if i < len(todays_games_uo) else 5.5
+                # Get OU value - use predicted value if available, otherwise use default
+                ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5)
                 
                 # Get ML prediction to determine winning team
                 ml_winner = home_team  # Default
@@ -598,10 +613,26 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
                         spread_winner = away_team
                         spread_confidence = round(abs(spread_pred - spread_value) / abs(spread_value) * 100, 1) if spread_value != 0 else 50.0
                 
+                # Get ML values from the prediction results
+                ml_home_value = 100  # Default ML value
+                ml_away_value = 100  # Default ML value
+                
+                if 'ml_predictions' in prediction_results and i < len(prediction_results['ml_predictions']):
+                    ml_pred = prediction_results['ml_predictions'][i]
+                    # Handle array conversion - the prediction is a numpy array from XGBoost
+                    if hasattr(ml_pred, '__len__') and len(ml_pred) > 0:
+                        if ml_pred.ndim == 2:
+                            ml_pred = ml_pred[0]  # Flatten 2D array to 1D
+                        
+                        if len(ml_pred) >= 2:
+                            # New model format: [ML_Home, ML_Away, Home-Team-Win]
+                            ml_home_value = int(round(ml_pred[0]))
+                            ml_away_value = int(round(ml_pred[1]))
+                
                 # Create the formatted line with team name, OU prediction, and spread value
-                # Format: "Team A vs Team B, recommended bet: Team C OU_VALUE,SPREAD_VALUE, confidence: X.X%"
+                # Format: "Team A vs Team B, recommended bet: Team C, Spread:X.X, ML:Y, OU:Z.Z, Confidence:W.W%"
                 ml_confidence_pct = round(ml_confidence * 100, 1)
-                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner} {ou_value},{spread_value}, confidence: {ml_confidence_pct}%"
+                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner}, Spread:{spread_value}, ML:{ml_home_value}, OU:{ou_value}, Confidence:{ml_confidence_pct}%"
                 txt_lines.append(line)
         
         # Write to TXT file

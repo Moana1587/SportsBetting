@@ -87,6 +87,8 @@ def prepare_training_data(data):
 def train_xgboost_model(features, target, num_iterations=100):
     """Train XGBoost model for Over/Under value prediction with multiple iterations"""
     r2_results = []
+    mse_results = []
+    mae_results = []
     
     print(f"Training XGBoost Over/Under value model with {num_iterations} iterations...")
     
@@ -94,29 +96,32 @@ def train_xgboost_model(features, target, num_iterations=100):
         # Split data
         x_train, x_test, y_train, y_test = train_test_split(features, target, test_size=0.1, random_state=x)
         
-        # Create DMatrix for XGBoost
-        train = xgb.DMatrix(x_train, label=y_train)
-        test = xgb.DMatrix(x_test)
-        
-        # XGBoost parameters for regression
-        param = {
-            'max_depth': 6,
-            'eta': 0.01,
-            'objective': 'reg:squarederror',
-            'random_state': x
-        }
-        epochs = 750
+        # XGBoost parameters for regression - optimized for OU value prediction
+        model = xgb.XGBRegressor(
+            max_depth=8,
+            eta=0.01,
+            n_estimators=1000,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=x,
+            objective='reg:squarederror'
+        )
         
         # Train model
-        model = xgb.train(param, train, epochs)
+        model.fit(x_train, y_train)
         
         # Make predictions
-        predictions = model.predict(test)
+        predictions = model.predict(x_test)
         
-        # Calculate R² score
+        # Calculate metrics
         r2 = r2_score(y_test, predictions)
+        mse = mean_squared_error(y_test, predictions)
+        mae = np.mean(np.abs(y_test - predictions))
+        
         r2_percent = round(r2 * 100, 1)
         r2_results.append(r2)
+        mse_results.append(mse)
+        mae_results.append(mae)
         
         # Save best model
         if r2 == max(r2_results):
@@ -124,7 +129,7 @@ def train_xgboost_model(features, target, num_iterations=100):
             model.save_model(model_path)
             print(f"New best R²: {r2_percent}% - Model saved to {model_path}")
     
-    return r2_results
+    return r2_results, mse_results, mae_results
 
 def main():
     """Main training function"""
@@ -136,13 +141,17 @@ def main():
         features, target = prepare_training_data(data)
         
         # Train model
-        r2_results = train_xgboost_model(features, target)
+        r2_results, mse_results, mae_results = train_xgboost_model(features, target)
         
         # Print results
         print(f"\nTraining completed!")
         print(f"Best R²: {max(r2_results)*100:.1f}%")
         print(f"Average R²: {np.mean(r2_results)*100:.1f}%")
         print(f"R² std: {np.std(r2_results)*100:.1f}%")
+        print(f"Best MSE: {min(mse_results):.4f}")
+        print(f"Average MSE: {np.mean(mse_results):.4f}")
+        print(f"Best MAE: {min(mae_results):.4f}")
+        print(f"Average MAE: {np.mean(mae_results):.4f}")
         
         # Print target statistics
         print(f"\nTarget (OU) statistics:")
@@ -160,6 +169,6 @@ def main():
 if __name__ == "__main__":
     success = main()
     if success:
-        print("\n✅ XGBoost Over/Under value model training completed successfully!")
+        print("\nXGBoost Over/Under value model training completed successfully!")
     else:
-        print("\n❌ XGBoost Over/Under value model training failed!")
+        print("\nXGBoost Over/Under value model training failed!")

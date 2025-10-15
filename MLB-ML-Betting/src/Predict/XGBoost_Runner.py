@@ -50,12 +50,13 @@ def load_latest_model(pattern, model_type):
     return booster
 
 def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team_odds, kelly_criterion, todays_games_spread=None, return_data=False):
-    # Load unified ML model and other models
-    xgb_unified_ml = load_latest_model("XGBoost_Unified_*_ML.json", "Unified Moneyline")
+    # Load ML models and other models
+    xgb_ml_home = load_latest_model("XGBoost_ML_Home_*_R2.json", "ML Home")
+    xgb_ml_away = load_latest_model("XGBoost_ML_Away_*_R2.json", "ML Away")
     xgb_uo = load_latest_model("XGBoost_*_UO-9.json", "Over/Under")
     xgb_spread = load_latest_model("XGBoost_*_Spread-10.json", "Spread")
 
-    if xgb_unified_ml is None or xgb_uo is None:
+    if xgb_ml_home is None or xgb_ml_away is None or xgb_uo is None:
         print("Error: Could not load required models. Please train models first.")
         return None if return_data else None
     
@@ -63,12 +64,36 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     print(f"Data shape: {data.shape}")
     
     ml_predictions_array = []
+    ml_home_values = []
+    ml_away_values = []
 
     for row in data:
-        # Use unified ML model for predictions
-        unified_pred = xgb_unified_ml.predict(xgb.DMatrix(np.array([row])))
+        # Use separate ML models for predictions
+        ml_home_pred = xgb_ml_home.predict(xgb.DMatrix(np.array([row])))
+        ml_away_pred = xgb_ml_away.predict(xgb.DMatrix(np.array([row])))
+        
+        # Store actual ML values
+        ml_home_values.append(ml_home_pred[0])
+        ml_away_values.append(ml_away_pred[0])
+        
+        # Convert ML values to probabilities for compatibility with existing code
+        # Convert American odds to implied probabilities
+        def american_to_prob(odds):
+            if odds > 0:
+                return 100 / (odds + 100)
+            else:
+                return abs(odds) / (abs(odds) + 100)
+        
+        prob_home = american_to_prob(ml_home_pred[0])
+        prob_away = american_to_prob(ml_away_pred[0])
+        
+        # Normalize probabilities to sum to 1
+        total_prob = prob_home + prob_away
+        prob_home = prob_home / total_prob
+        prob_away = prob_away / total_prob
+        
         # Convert to expected format: [[prob_away, prob_home]]
-        ml_pred = np.array([[unified_pred[0][0], unified_pred[0][1]]])
+        ml_pred = np.array([[prob_away, prob_home]])
         ml_predictions_array.append(ml_pred)
 
     frame_uo = copy.deepcopy(frame_ml)
@@ -248,5 +273,9 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     deinit()
     
     if return_data:
-        return predictions_data
+        return {
+            'predictions_data': predictions_data,
+            'ml_home_values': ml_home_values,
+            'ml_away_values': ml_away_values
+        }
     return None

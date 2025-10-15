@@ -129,9 +129,6 @@ def createTodaysGames(games, df, odds):
     # Convert list of dictionaries to DataFrame
     games_data_frame = pd.DataFrame(match_data)
     
-    print(f"Games data frame shape: {games_data_frame.shape}")
-    print(f"Games data frame columns: {list(games_data_frame.columns)}")
-
     # Drop columns that shouldn't be used for prediction (matching unified model training)
     columns_to_drop = ['Score', 'Home-Team-Win', 'OU-Cover', 'OU', 'Days-Rest-Home', 'Days-Rest-Away', 'ML_Home', 'ML_Away']
     # Also drop any team name or date columns that might exist
@@ -303,9 +300,84 @@ def predict_with_spread_model(data, games, home_team_odds, away_team_odds):
         
         predictions_data.append(prediction)
         
-        # Print prediction in the specified format
-        print(f"{away_team} vs {home_team}, recommended bet: {spread_prediction}, confidence: {confidence}%")
+        # Print prediction in the requested format
+        ml_value = home_team_odds[count] if home_team_odds[count] else "N/A"
+        ou_value = "N/A"  # OU value not available in spread model
+        print(f"{away_team} vs {home_team}, recommended bet: {favored_team}, Spread:{spread_line:.1f}, ML:{ml_value}, OU:{ou_value}, Confidence:{confidence:.1f}%")
     
+def load_best_ou_model():
+    """Load the best OU model from the Models folder"""
+    model_pattern = "Models/XGBoost_*_UO-*.json"
+    model_files = glob.glob(model_pattern)
+    
+    if not model_files:
+        print(f"No OU models found matching pattern: {model_pattern}")
+        return None
+    
+    # Find the model with the highest accuracy
+    best_model = None
+    best_accuracy = -1
+    
+    for model_file in model_files:
+        try:
+            # Extract accuracy from filename (e.g., XGBoost_51.3%_UO-9.json -> 51.3)
+            filename = os.path.basename(model_file)
+            accuracy_str = filename.replace('XGBoost_', '').replace('%_UO-9.json', '')
+            accuracy = float(accuracy_str)
+            
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_model = model_file
+        except ValueError:
+            print(f"Could not parse accuracy from filename: {filename}")
+            continue
+    
+    if best_model:
+        print(f"Loading best OU model: {best_model} (accuracy: {best_accuracy:.1f}%)")
+        booster = xgb.Booster()
+        booster.load_model(best_model)
+        return booster
+    else:
+        print("No valid OU model found")
+        return None
+
+def load_best_ml_model(pattern):
+    """Load the best ML model from the Models folder"""
+    model_files = glob.glob(f"Models/{pattern}")
+    
+    if not model_files:
+        print(f"No ML models found matching pattern: {pattern}")
+        return None
+    
+    # Find the model with the highest R² score
+    best_model = None
+    best_r2 = -999
+    
+    for model_file in model_files:
+        try:
+            # Extract R² from filename
+            filename = os.path.basename(model_file)
+            # Pattern: XGBoost_ML_Home_0.XXX_R2.json
+            parts = filename.split('_')
+            if len(parts) >= 4 and 'R2' in filename:
+                r2_str = parts[3]
+                r2 = float(r2_str)
+                
+                if r2 > best_r2:
+                    best_r2 = r2
+                    best_model = model_file
+        except (ValueError, IndexError):
+            continue
+    
+    if best_model:
+        print(f"Loading best ML model: {best_model} (R²: {best_r2:.3f})")
+        model = xgb.Booster()
+        model.load_model(best_model)
+        return model
+    else:
+        print("No valid ML models found")
+        return None
+
 def load_best_unified_model():
     """Load the best unified model from the Models folder"""
     model_pattern = "Models/XGBoost_Unified_*_ML.json"
@@ -343,7 +415,52 @@ def load_best_unified_model():
         return None
 
 
-def predict_with_unified_model(data, games, home_team_odds, away_team_odds, todays_games_spread):
+def predict_ou_values(data, games, todays_games_uo):
+    """Make OU value predictions using the OU model"""
+    model = load_best_ou_model()
+    if model is None:
+        print("Error: Could not load OU model")
+        return None
+    
+    print(f"Making OU predictions for {len(games)} games...")
+    print(f"Data shape: {data.shape}")
+    
+    ou_predictions = []
+    
+    for count, game in enumerate(games):
+        home_team = game[0]
+        away_team = game[1]
+        
+        # Make prediction using OU model
+        ou_pred = model.predict(xgb.DMatrix(data[count:count+1]))
+        
+        # Extract prediction probabilities
+        # ou_pred returns probabilities [prob_under, prob_over]
+        under_prob = ou_pred[0][0]
+        over_prob = ou_pred[0][1]
+        
+        # Determine predicted outcome
+        if over_prob > under_prob:
+            ou_prediction = "Over"
+            ou_confidence = over_prob * 100
+        else:
+            ou_prediction = "Under"
+            ou_confidence = under_prob * 100
+        
+        # Use the actual OU line from todays_games_uo if available
+        ou_line = todays_games_uo[count] if todays_games_uo[count] else 8.5
+        
+        ou_predictions.append({
+            'home_team': home_team,
+            'away_team': away_team,
+            'ou_prediction': ou_prediction,
+            'ou_confidence': ou_confidence,
+            'ou_line': ou_line
+        })
+    
+    return ou_predictions
+
+def predict_with_unified_model(data, games, home_team_odds, away_team_odds, todays_games_spread, todays_games_uo):
     """Make predictions using the unified model"""
     model = load_best_unified_model()
     if model is None:
@@ -352,6 +469,13 @@ def predict_with_unified_model(data, games, home_team_odds, away_team_odds, toda
     
     print(f"Making unified predictions for {len(games)} games...")
     print(f"Data shape: {data.shape}")
+    
+    # Load ML models for actual ML value prediction
+    ml_home_model = load_best_ml_model("XGBoost_ML_Home_*_R2.json")
+    ml_away_model = load_best_ml_model("XGBoost_ML_Away_*_R2.json")
+    
+    # Get OU predictions
+    ou_predictions = predict_ou_values(data, games, todays_games_uo)
     
     predictions_data = []
     
@@ -375,9 +499,14 @@ def predict_with_unified_model(data, games, home_team_odds, away_team_odds, toda
             predicted_winner = away_team
             winner_confidence = away_win_prob * 100
         
-        # Convert probabilities to ML percentages (30-70% range)
-        ml_home_percentage = np.clip(home_win_prob * 100, 30, 70)
-        ml_away_percentage = np.clip(away_win_prob * 100, 30, 70)
+        # Get actual ML values from models
+        if ml_home_model and ml_away_model:
+            ml_home_value = ml_home_model.predict(xgb.DMatrix(data[count:count+1]))[0]
+            ml_away_value = ml_away_model.predict(xgb.DMatrix(data[count:count+1]))[0]
+        else:
+            # Fallback to synthetic values if models not available
+            ml_home_value = np.clip(home_win_prob * 100, 30, 70)
+            ml_away_value = np.clip(away_win_prob * 100, 30, 70)
         
         # Calculate spread prediction and confidence
         spread_line = todays_games_spread[count] if todays_games_spread[count] else 1.5
@@ -388,6 +517,10 @@ def predict_with_unified_model(data, games, home_team_odds, away_team_odds, toda
             spread_prediction = f"{home_team} -{spread_line}"
         else:
             spread_prediction = f"{away_team} +{spread_line}"
+        
+        # Get OU prediction for this game
+        ou_data = ou_predictions[count] if ou_predictions else None
+        ou_value = ou_data['ou_line'] if ou_data else "N/A"
         
         # Calculate Expected Value and Kelly Criterion if odds are available
         ev_home = ev_away = kelly_home = kelly_away = None
@@ -410,8 +543,8 @@ def predict_with_unified_model(data, games, home_team_odds, away_team_odds, toda
             'Away_Team': away_team,
             'Predicted_Winner': predicted_winner,
             'Winner_Confidence_%': round(winner_confidence, 1),
-            'ML_Home_%': round(ml_home_percentage, 1),
-            'ML_Away_%': round(ml_away_percentage, 1),
+            'ML_Home_Value': round(ml_home_value, 1),
+            'ML_Away_Value': round(ml_away_value, 1),
             'Home_Team_Odds': home_team_odds[count] if home_team_odds[count] else 'N/A',
             'Away_Team_Odds': away_team_odds[count] if away_team_odds[count] else 'N/A',
             'EV_Home': ev_home,
@@ -421,15 +554,16 @@ def predict_with_unified_model(data, games, home_team_odds, away_team_odds, toda
             'Spread_Prediction': spread_prediction,
             'Spread_Line': spread_line,
             'Spread_Confidence_%': round(spread_confidence, 1),
-            'Over_Under_Prediction': 'N/A',  # Not available in unified model
-            'Over_Under_Line': 'N/A',
-            'Over_Under_Confidence_%': 'N/A'
+            'Over_Under_Prediction': ou_data['ou_prediction'] if ou_data else 'N/A',
+            'Over_Under_Line': ou_value,
+            'Over_Under_Confidence_%': round(ou_data['ou_confidence'], 1) if ou_data else 'N/A'
         }
         
         predictions_data.append(prediction)
         
-        # Print prediction in the specified format
-        print(f"{away_team} vs {home_team}, recommended bet: {spread_prediction}, confidence: {spread_confidence}%")
+        # Print prediction in the requested format
+        ml_value = int(ml_home_value) if ml_home_model and ml_away_model else (home_team_odds[count] if home_team_odds[count] else "N/A")
+        print(f"{away_team} vs {home_team}, recommended bet: {predicted_winner}, Spread:{spread_line}, ML:{ml_value}, OU:{ou_value}, Confidence:{spread_confidence:.1f}%")
     
     return predictions_data
 
@@ -443,9 +577,6 @@ def main():
     # Load the mlb_dataset table (same as training models)
     df = pd.read_sql_query("SELECT * FROM mlb_dataset", con)
     con.close()
-    
-    print(f"Loaded mlb_dataset with {len(df)} rows and {len(df.columns)} columns")
-    print(f"Columns: {list(df.columns)}")
     
     # Fetch today's games from MLB API
     print("Fetching today's MLB games...")
@@ -482,9 +613,6 @@ def main():
     
     data, todays_games_uo, frame_ml, home_team_odds, away_team_odds, todays_games_spread = result
     
-    print(f"Created feature matrix with shape: {data.shape}")
-    print(f"Features: {list(frame_ml.columns)}")
-    
     # Store original data for NN normalization
     original_data = data.copy()
     
@@ -503,7 +631,7 @@ def main():
     
     if args.xgb:
         print("---------------Unified XGBoost Model Predictions---------------")
-        unified_predictions = predict_with_unified_model(original_data, games, home_team_odds, away_team_odds, todays_games_spread)
+        unified_predictions = predict_with_unified_model(original_data, games, home_team_odds, away_team_odds, todays_games_spread, todays_games_uo)
         print("---------------------------------------------------------------")
         
     
@@ -514,7 +642,7 @@ def main():
         
         
         print("---------------Unified XGBoost Model Predictions---------------")
-        unified_predictions = predict_with_unified_model(original_data, games, home_team_odds, away_team_odds, todays_games_spread)
+        unified_predictions = predict_with_unified_model(original_data, games, home_team_odds, away_team_odds, todays_games_spread, todays_games_uo)
         print("---------------------------------------------------------------")
         
         

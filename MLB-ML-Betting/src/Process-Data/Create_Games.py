@@ -21,6 +21,8 @@ games = []
 days_rest_away = []
 days_rest_home = []
 spread = []
+ml_home = []
+ml_away = []
 teams_con = sqlite3.connect("../../Data/TeamData.sqlite")
 odds_con = sqlite3.connect("../../Data/OddsData.sqlite")
 
@@ -88,6 +90,8 @@ for key, value in config['create-games'].items():
         spread.append(row[5])        # Spread
         days_rest_home.append(row[10])  # Days_Rest_Home
         days_rest_away.append(row[11])  # Days_Rest_Away
+        ml_home.append(row[6])       # ML_Home
+        ml_away.append(row[7])       # ML_Away
         
         # Updated win margin logic
         if row[9] > 0:  # Win_Margin
@@ -116,11 +120,12 @@ if len(games) == 0:
     print("No games found to process!")
 else:
     # Validate that all arrays have the same length
-    array_lengths = [len(games), len(scores), len(win_margin), len(OU), len(OU_Cover), len(days_rest_home), len(days_rest_away), len(spread)]
+    array_lengths = [len(games), len(scores), len(win_margin), len(OU), len(OU_Cover), len(days_rest_home), len(days_rest_away), len(spread), len(ml_home), len(ml_away)]
     if len(set(array_lengths)) > 1:
         print(f"Error: Array lengths don't match!")
         print(f"Games: {len(games)}, Scores: {len(scores)}, Win Margin: {len(win_margin)}")
         print(f"OU: {len(OU)}, OU Cover: {len(OU_Cover)}, Days Rest Home: {len(days_rest_home)}, Days Rest Away: {len(days_rest_away)}, Spread: {len(spread)}")
+        print(f"ML Home: {len(ml_home)}, ML Away: {len(ml_away)}")
         # Truncate arrays to match the shortest length
         min_length = min(array_lengths)
         scores = scores[:min_length]
@@ -130,6 +135,8 @@ else:
         days_rest_home = days_rest_home[:min_length]
         days_rest_away = days_rest_away[:min_length]
         spread = spread[:min_length]
+        ml_home = ml_home[:min_length]
+        ml_away = ml_away[:min_length]
         games = games[:min_length]
         print(f"Truncated all arrays to length {min_length}")
     
@@ -151,6 +158,8 @@ else:
     frame['Spread'] = np.asarray(spread)
     frame['Days-Rest-Home'] = np.asarray(days_rest_home)
     frame['Days-Rest-Away'] = np.asarray(days_rest_away)
+    frame['ML_Home'] = np.asarray(ml_home)
+    frame['ML_Away'] = np.asarray(ml_away)
     
     # Fix data types
     for field in frame.columns.values:

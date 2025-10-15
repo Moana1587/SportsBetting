@@ -105,6 +105,33 @@ def load_models():
     
     return models
 
+def load_ou_value_model():
+    """Load the OU value prediction model"""
+    models_dir = "Models"
+    
+    # Try to find the best OU Value model
+    ou_value_models = [f for f in os.listdir(models_dir) if f.startswith("XGBoost_") and f.endswith("_UO-9.json")]
+    if ou_value_models:
+        # Sort by R² score and get the best one
+        ou_value_models.sort(key=lambda x: float(x.split('_')[1].replace('%', '')), reverse=True)
+        best_ou_value_model = os.path.join(models_dir, ou_value_models[0])
+        best_ou_value_r2 = float(ou_value_models[0].split('_')[1].replace('%', ''))
+        
+        print(f"Found {len(ou_value_models)} OU Value models:")
+        for i, model in enumerate(ou_value_models[:3]):  # Show top 3
+            r2 = float(model.split('_')[1].replace('%', ''))
+            marker = "BEST" if i == 0 else "   "
+            print(f"   {marker} {model} ({r2}%)")
+        
+        # Load the model using XGBRegressor
+        model = xgb.XGBRegressor()
+        model.load_model(best_ou_value_model)
+        print(f"Loaded BEST OU Value model: {ou_value_models[0]} ({best_ou_value_r2}%)")
+        return model, best_ou_value_r2
+    else:
+        print("No OU Value models found.")
+        return None, 0
+
 # Initialize models as None - will be loaded when needed
 models = None
 
@@ -181,6 +208,20 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
         for i in range(len(frame_spread)):
             row_data = frame_spread.iloc[i:i+1]  # Get single row as DataFrame
             spread_predictions_array.append(models['spread'].predict(xgb.DMatrix(row_data)))
+    
+    # Make OU Value predictions
+    ou_value_predictions_array = []
+    ou_value_model, ou_value_r2 = load_ou_value_model()
+    if ou_value_model is not None:
+        print(f"Making OU Value predictions on {len(frame_ml)} games...")
+        
+        for i in range(len(frame_ml)):
+            row_data = frame_ml.iloc[i:i+1]  # Get single row as DataFrame
+            ou_value_pred = ou_value_model.predict(row_data)[0]  # XGBRegressor returns array
+            ou_value_predictions_array.append(ou_value_pred)
+    else:
+        print("No OU Value model available, using default OU values")
+        ou_value_predictions_array = [5.5] * len(frame_ml)  # Default OU value
 
     # Debug: Print array lengths
     print(f"\nDebug: Prediction array lengths:")
@@ -188,6 +229,7 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     print(f"  ML predictions: {len(ml_predictions_array)}")
     print(f"  OU predictions: {len(ou_predictions_array)}")
     print(f"  Spread predictions: {len(spread_predictions_array)}")
+    print(f"  OU value predictions: {len(ou_value_predictions_array)}")
     print(f"  OU values: {len(todays_games_uo)}")
     print(f"  Spread values: {len(todays_games_spread) if todays_games_spread else 0}")
     print()
@@ -442,5 +484,6 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     return {
         'ml_predictions': ml_predictions_array,
         'ou_predictions': ou_predictions_array,
-        'spread_predictions': spread_predictions_array
+        'spread_predictions': spread_predictions_array,
+        'ou_value_predictions': ou_value_predictions_array
     }
