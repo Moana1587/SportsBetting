@@ -211,13 +211,33 @@ def parse_cfb_predictions(stdout):
             # Format the recommended bet
             formatted_bet = f"{recommended_team} {formatted_spread}"
             
-            # Create comprehensive raw prediction in the requested format
-            spread_info = f"Spread:{formatted_spread}" if formatted_spread != 'N/A' else "Spread:N/A"
-            ml_info = f"ML:{ml_value}" if ml_value != 'N/A' else "ML:N/A"
-            ou_info = f"OU:{ou_value}" if ou_value != 'N/A' else "OU:N/A"
-            confidence_info = f"Confidence:{confidence}" if confidence != 'N/A' else "Confidence:N/A"
+            # Create comprehensive raw prediction in the requested format with confidence values
+            spread_confidence = "N/A"
             
-            raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}, {confidence_info}"
+            # Extract spread confidence from the spread value section
+            spread_section_start = stdout.find("---------------XGBoost Spread Value Regression Predictions---------------")
+            if spread_section_start != -1:
+                spread_game_section = stdout[spread_section_start:spread_section_start + 2000]
+                game_in_spread = spread_game_section.find(f"{away_team} @ {home_team}")
+                if game_in_spread != -1:
+                    spread_game_section = spread_game_section[game_in_spread:game_in_spread + 500]
+                    # Look for edge information which indicates confidence
+                    edge_match = re.search(r'Edge vs Line: ([+-]?\d+\.?\d*) points', spread_game_section)
+                    if edge_match:
+                        edge_value = float(edge_match.group(1))
+                        # Convert edge to confidence percentage (simplified calculation)
+                        spread_confidence = f"{min(abs(edge_value) * 10 + 50, 99):.1f}%"
+            
+            # Use the ML confidence we already extracted as primary confidence
+            if ml_confidence != "N/A":
+                spread_confidence = ml_confidence  # Use ML confidence as primary
+            
+            # Format the prediction with confidence values
+            spread_info = f"Spread:{formatted_spread}({spread_confidence})" if formatted_spread != 'N/A' else "Spread:N/A"
+            ml_info = f"ML:{ml_value}({ml_confidence})" if ml_value != 'N/A' else "ML:N/A"
+            ou_info = f"OU:{ou_value}({ou_confidence})" if ou_value != 'N/A' else "OU:N/A"
+            
+            raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}"
             
             games[game_key] = {
                 'away_team': away_team,
@@ -357,6 +377,16 @@ def parse_cfb_predictions(stdout):
                 # Format the recommended bet
                 formatted_bet = f"{recommended_team} {formatted_spread}"
                 
+                # Create comprehensive raw prediction in the requested format with confidence values
+                spread_confidence = confidence  # Use the confidence we found
+                
+                # Format the prediction with confidence values
+                spread_info = f"Spread:{formatted_spread}({spread_confidence})" if formatted_spread != 'N/A' else "Spread:N/A"
+                ml_info = f"ML:{ml_value}({ml_confidence})" if ml_value != 'N/A' else "ML:N/A"
+                ou_info = f"OU:{ou_value}({ou_confidence})" if ou_value != 'N/A' else "OU:N/A"
+                
+                raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}"
+                
                 games[game_key] = {
                     'away_team': away_team,
                     'home_team': home_team,
@@ -364,7 +394,7 @@ def parse_cfb_predictions(stdout):
                     'spread_value': formatted_spread,
                     'confidence': confidence,
                     'sport': 'CFB',
-                    'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}",
+                    'raw_prediction': raw_prediction,
                     'spread_prediction': formatted_bet,
                     'spread_line': formatted_spread,
                     'spread_confidence': confidence,
@@ -400,7 +430,7 @@ def parse_cfb_predictions(stdout):
                 'spread_value': spread_value,
                 'confidence': f"{confidence}%",
                 'sport': 'CFB',
-                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}%",
+                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{spread_value}({confidence}%), ML:N/A, OU:N/A",
                 'spread_prediction': f"{recommended_team} {spread_value}",
                 'spread_line': spread_value,
                 'spread_confidence': f"{confidence}%"
@@ -429,7 +459,7 @@ def parse_cfb_predictions(stdout):
                 'spread_value': spread_value,
                 'confidence': f"{confidence}%",
                 'sport': 'CFB',
-                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {confidence}%",
+                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{spread_value}({confidence}%), ML:N/A, OU:N/A",
                 'spread_prediction': f"{recommended_team} {spread_value}",
                 'spread_line': spread_value,
                 'spread_confidence': f"{confidence}%"
@@ -513,13 +543,16 @@ def parse_cfb_predictions(stdout):
                 if confidence == 'N/A' or not confidence:
                     confidence = game_data.get('confidence', 'N/A')
                 
-                # Create comprehensive raw prediction in the requested format
-                spread_info = f"Spread:{spread_value}" if spread_value != 'N/A' else "Spread:N/A"
-                ml_info = f"ML:{game_data.get('ml_value', 'N/A')}" if game_data.get('ml_value') != 'N/A' else "ML:N/A"
-                ou_info = f"OU:{game_data.get('ou_value', 'N/A')}" if game_data.get('ou_value') != 'N/A' else "OU:N/A"
-                confidence_info = f"Confidence:{confidence}" if confidence != 'N/A' else "Confidence:N/A"
+                # Create comprehensive raw prediction in the requested format with confidence values
+                spread_confidence = confidence if confidence != 'N/A' else "N/A"
+                ml_confidence = game_data.get('ml_confidence', 'N/A')
+                ou_confidence = game_data.get('ou_confidence', 'N/A')
                 
-                game_data['raw_prediction'] = f"{game_data['away_team']} vs {game_data['home_team']}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}, {confidence_info}"
+                spread_info = f"Spread:{spread_value}({spread_confidence})" if spread_value != 'N/A' else "Spread:N/A"
+                ml_info = f"ML:{game_data.get('ml_value', 'N/A')}({ml_confidence})" if game_data.get('ml_value') != 'N/A' else "ML:N/A"
+                ou_info = f"OU:{game_data.get('ou_value', 'N/A')}({ou_confidence})" if game_data.get('ou_value') != 'N/A' else "OU:N/A"
+                
+                game_data['raw_prediction'] = f"{game_data['away_team']} vs {game_data['home_team']}, recommended bet: {recommended_team}, {spread_info}, {ml_info}, {ou_info}"
             elif 'spread_prediction' in game_data and game_data['spread_prediction']:
                 # For spread predictions, use the format: "Team A vs Team B, recommended bet: Team A [spread value], confidence: [confidence percent against spread value]"
                 recommended_team = game_data['spread_prediction'].split()[0]  # Extract team name
@@ -749,22 +782,26 @@ def parse_mlb_predictions(stdout):
     if "No games found for today" in stdout or "No games found" in stdout or "No games entered" in stdout:
         return {}
     
-    # 1. Look for the new format: "Team A vs Team B, recommended bet: Team C, Spread:X.X, ML:Y, OU:Z.Z, Confidence:W.W%"
-    new_format_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+), Spread:(?P<spread_value>[\d.]+), ML:(?P<ml_value>[\d]+), OU:(?P<ou_value>[\d.]+), Confidence:(?P<confidence>[\d.]+)%', re.MULTILINE)
+    # 1. Look for the new format with confidence values: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Z.Z(confidence%)"
+    new_format_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+), Spread:(?P<spread_value>[\d.+-]+)\((?P<spread_confidence>[\d.]+)%\), ML:(?P<ml_value>[\d+-]+)\((?P<ml_confidence>[\d.]+)%\), OU:(?P<ou_value>[\d.]+)\((?P<ou_confidence>[\d.]+)%\)', re.MULTILINE)
     
     for match in new_format_pattern.finditer(stdout):
         away_team = match.group('away_team').strip()
         home_team = match.group('home_team').strip()
         recommended_team = match.group('recommended_team').strip()
         spread_value = match.group('spread_value').strip()
+        spread_confidence = match.group('spread_confidence').strip()
         ml_value = match.group('ml_value').strip()
+        ml_confidence = match.group('ml_confidence').strip()
         ou_value = match.group('ou_value').strip()
-        confidence = match.group('confidence').strip()
+        ou_confidence = match.group('ou_confidence').strip()
         
         game_key = f"{away_team}:{home_team}"
         
         # Round values for better readability
-        confidence_rounded = round(float(confidence), 1)
+        spread_confidence_rounded = round(float(spread_confidence), 1)
+        ml_confidence_rounded = round(float(ml_confidence), 1)
+        ou_confidence_rounded = round(float(ou_confidence), 1)
         spread_rounded = round(float(spread_value), 1)
         ou_rounded = round(float(ou_value), 1)
         
@@ -775,22 +812,26 @@ def parse_mlb_predictions(stdout):
         else:  # away team
             formatted_spread = f"+{spread_rounded}"
         
+        # Use ML confidence as the primary confidence
+        primary_confidence = ml_confidence_rounded
+        
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
             'recommended_team': recommended_team,
             'recommended_bet': recommended_team,
-            'confidence': f"{confidence_rounded}%",
+            'confidence': f"{primary_confidence}%",
             'bet_category': "moneyline",
             'sport': 'MLB',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}, ML:{ml_value}, OU:{ou_rounded}, Confidence:{confidence_rounded}%",
+            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_rounded}({ou_confidence_rounded}%)",
             'spread_prediction': f"{recommended_team} {formatted_spread}",
             'spread_line': formatted_spread,
-            'spread_confidence': f"{confidence_rounded}%",
+            'spread_confidence': f"{spread_confidence_rounded}%",
             'ml_value': ml_value,
+            'ml_confidence': f"{ml_confidence_rounded}%",
             'ou_value': str(ou_rounded),
             'ou_prediction': "N/A",  # Not available in this format
-            'ou_confidence': "N/A"
+            'ou_confidence': f"{ou_confidence_rounded}%"
         }
     
     # 2. Look for the old TEXT_OUTPUT format from XGBoost_Runner.py (fallback)
@@ -1555,29 +1596,33 @@ def parse_nhl_predictions(stdout):
     if "No games available" in stdout or "No upcoming games found" in stdout or "No games found for today" in stdout:
         return {}
     
-    # Look for the new TXT Export format: "Team A vs Team B, recommended bet: Team C, Spread:X.X, ML:Y, OU:Z.Z, Confidence:W.W%"
-    txt_pattern = re.compile(r'(?P<home_team>[\w .]+) vs (?P<away_team>[\w .]+), recommended bet: (?P<recommended_team>[\w .]+), Spread:(?P<spread_value>[\d.]+), ML:(?P<ml_value>[\d+-]+), OU:(?P<ou_value>[\d.]+), Confidence:(?P<confidence>[\d.]+)%', re.MULTILINE)
+    # Look for the new TXT Export format with individual confidence values: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Z.Z(confidence%)"
+    txt_pattern = re.compile(r'(?P<home_team>[\w .]+) vs (?P<away_team>[\w .]+), recommended bet: (?P<recommended_team>[\w .]+), Spread:(?P<spread_value>[\d.+-]+)\((?P<spread_confidence>[\d.]+)%\), ML:(?P<ml_value>[\d+-]+)\((?P<ml_confidence>[\d.]+)%\), OU:(?P<ou_value>[\d.]+)\((?P<ou_confidence>[\d.]+)%\)', re.MULTILINE)
     
     for match in txt_pattern.finditer(stdout):
         home_team = match.group('home_team').strip()
         away_team = match.group('away_team').strip()
         recommended_team = match.group('recommended_team').strip()
         spread_value = match.group('spread_value').strip()
+        spread_confidence = match.group('spread_confidence').strip()
         ml_value = match.group('ml_value').strip()
+        ml_confidence = match.group('ml_confidence').strip()
         ou_value = match.group('ou_value').strip()
-        confidence = match.group('confidence').strip()
+        ou_confidence = match.group('ou_confidence').strip()
         
         game_key = f"{away_team}:{home_team}"
         
         # Round the values for better readability
         spread_value_rounded = round(float(spread_value), 1)
         ou_value_rounded = round(float(ou_value), 1)
-        confidence_rounded = round(float(confidence), 1)
+        spread_confidence_rounded = round(float(spread_confidence), 1)
+        ml_confidence_rounded = round(float(ml_confidence), 1)
+        ou_confidence_rounded = round(float(ou_confidence), 1)
         
         # Create bet description - this is typically ML since the format shows ML prediction
         bet_description = f"{recommended_team} ML"
         
-        # Format the recommended bet with spread value and sign
+        # Format the spread value with proper sign based on recommended team
         # Determine if recommended team is home or away to assign correct sign
         if recommended_team == home_team:
             formatted_spread = f"-{spread_value_rounded}"
@@ -1585,25 +1630,26 @@ def parse_nhl_predictions(stdout):
             formatted_spread = f"+{spread_value_rounded}"
         formatted_bet = f"{recommended_team} {formatted_spread}"
         
-        # Create the raw prediction in the requested format
-        raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}, ML:{ml_value}, OU:{ou_value_rounded}, Confidence:{confidence_rounded}%"
+        # Create the raw prediction in the requested format with individual confidence values
+        raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_value_rounded}({ou_confidence_rounded}%)"
         
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
             'recommended_team': recommended_team,
             'recommended_bet': bet_description,
-            'confidence': f"{confidence_rounded}%",
+            'confidence': f"{ml_confidence_rounded}%",  # Use ML confidence as primary confidence
             'bet_category': 'moneyline',
             'sport': 'NHL',
             'raw_prediction': raw_prediction,
             'spread_prediction': f"{recommended_team} {formatted_spread}",
             'spread_line': formatted_spread,
-            'spread_confidence': f"{confidence_rounded}%",
+            'spread_confidence': f"{spread_confidence_rounded}%",
             'ou_prediction': f"OVER {ou_value_rounded}",
             'ou_value': str(ou_value_rounded),
-            'ou_confidence': f"{confidence_rounded}%",
-            'ml_value': ml_value
+            'ou_confidence': f"{ou_confidence_rounded}%",
+            'ml_value': ml_value,
+            'ml_confidence': f"{ml_confidence_rounded}%"
         }
     
     # If no TXT format found, look for the old simple format: "Team A vs Team B, recommended bet: Team A OVER 5.5, confidence: 51.3%"

@@ -68,7 +68,29 @@ def nn_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team_
                 recommended_bet = f"{away_team} OVER {todays_games_uo[count]}"
                 confidence = un_confidence
         
-        # Print in the specified format
-        print(f"{away_team} vs {home_team}, recommended bet: {recommended_bet}, confidence: {confidence}%")
+        # Print in the specified format with confidence values
+        # Extract values for the new format
+        spread_value = "N/A"
+        spread_confidence = "N/A"
+        ml_value = "N/A"
+        ml_confidence = "N/A"
+        ou_value = "N/A"
+        ou_confidence = "N/A"
+        
+        # Try to extract spread information from recommended_bet
+        if "UNDER" in recommended_bet or "OVER" in recommended_bet:
+            # This is an OU bet
+            ou_value = todays_games_uo[count] if count < len(todays_games_uo) else "N/A"
+            ou_confidence = f"{confidence}%"
+        elif "+" in recommended_bet or "-" in recommended_bet:
+            # This is a spread bet
+            spread_value = recommended_bet.split()[-1] if recommended_bet.split() else "N/A"
+            spread_confidence = f"{confidence}%"
+        else:
+            # This is likely an ML bet
+            ml_value = "N/A"  # ML value not available in NN model
+            ml_confidence = f"{confidence}%"
+        
+        print(f"{away_team} vs {home_team}, recommended bet: {recommended_bet}, Spread:{spread_value}({spread_confidence}), ML:{ml_value}({ml_confidence}), OU:{ou_value}({ou_confidence})")
         count += 1
     deinit()

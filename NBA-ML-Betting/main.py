@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime, timedelta
+import requests
 
 import pandas as pd
 import tensorflow as tf
@@ -9,6 +10,37 @@ from src.DataProviders.SbrOddsProvider import SbrOddsProvider
 from src.Predict import NN_Runner, XGBoost_Runner
 from src.Utils.Dictionaries import team_index_current
 from src.Utils.tools import create_todays_games_from_odds, get_json_data, to_data_frame, get_todays_games_json, create_todays_games
+
+def get_todays_nba_games():
+    """Fetch today's NBA games from ESPN API"""
+    today = datetime.now().strftime('%Y%m%d')
+    espn_games_url = f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={today}'
+    
+    try:
+        response = requests.get(espn_games_url)
+        response.raise_for_status()
+        data = response.json()
+        
+        games = []
+        if 'events' in data:
+            for event in data['events']:
+                # Extract team information from competitors
+                home_team = None
+                away_team = None
+                
+                for competitor in event.get('competitions', [{}])[0].get('competitors', []):
+                    if competitor.get('homeAway') == 'home':
+                        home_team = competitor['team']['displayName']
+                    elif competitor.get('homeAway') == 'away':
+                        away_team = competitor['team']['displayName']
+                
+                if home_team and away_team:
+                    games.append([home_team, away_team])
+        
+        return games
+    except Exception as e:
+        print(f"Error fetching NBA games from ESPN API: {e}")
+        return []
 
 todays_games_url = 'http://data.nba.net/v2015/json/mobile_teams/nba/2025/scores/00_todays_scores.json'#'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2024/scores/00_todays_scores.json'
 data_url = 'https://stats.nba.com/stats/leaguedashteamstats?' \
@@ -104,8 +136,10 @@ def main():
                 home_team, away_team = g.split(":")
                 print(f"{away_team} ({odds[g][away_team]['money_line_odds']}) @ {home_team} ({odds[g][home_team]['money_line_odds']})")
     else:
-        data = get_todays_games_json(todays_games_url)
-        games = create_todays_games(data)
+        games = get_todays_nba_games()
+        if len(games) == 0:
+            print("No NBA games found for today.")
+            return
     data = get_json_data(data_url)
     df = to_data_frame(data)
     data, todays_games_uo, frame_ml, home_team_odds, away_team_odds = createTodaysGames(games, df, odds)

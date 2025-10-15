@@ -316,10 +316,13 @@ def predict_with_spread_model(data, games, home_team_odds, away_team_odds):
         
         predictions_data.append(prediction)
         
-        # Print prediction in the requested format
+        # Print prediction in the requested format with confidence values
         ml_value = home_team_odds[count] if home_team_odds[count] else "N/A"
         ou_value = "N/A"  # OU value not available in spread model
-        print(f"{away_team} vs {home_team}, recommended bet: {favored_team}, Spread:{spread_line:.1f}, ML:{ml_value}, OU:{ou_value}, Confidence:{confidence:.1f}%")
+        ml_confidence = "N/A"  # ML confidence not available in spread model
+        ou_confidence = "N/A"  # OU confidence not available in spread model
+        
+        print(f"{away_team} vs {home_team}, recommended bet: {favored_team}, Spread:{spread_line:.1f}({confidence:.1f}%), ML:{ml_value}({ml_confidence}), OU:{ou_value}({ou_confidence})")
     
 def load_best_ou_model():
     """Load the best OU model from the Models folder"""
@@ -577,9 +580,18 @@ def predict_with_unified_model(data, games, home_team_odds, away_team_odds, toda
         
         predictions_data.append(prediction)
         
-        # Print prediction in the requested format
+        # Print prediction in the requested format with confidence values
         ml_value = int(ml_home_value) if ml_home_model and ml_away_model else (home_team_odds[count] if home_team_odds[count] else "N/A")
-        print(f"{away_team} vs {home_team}, recommended bet: {predicted_winner}, Spread:{spread_line}, ML:{ml_value}, OU:{ou_value}, Confidence:{spread_confidence:.1f}%")
+        
+        # Get OU confidence from OU predictions
+        ou_confidence = ou_data['ou_confidence'] if ou_data else "N/A"
+        if ou_confidence != "N/A":
+            ou_confidence = f"{ou_confidence:.1f}%"
+        
+        # Use winner confidence for ML confidence
+        ml_confidence = f"{winner_confidence:.1f}%"
+        
+        print(f"{away_team} vs {home_team}, recommended bet: {predicted_winner}, Spread:{spread_line}({spread_confidence:.1f}%), ML:{ml_value}({ml_confidence}), OU:{ou_value}({ou_confidence})")
     
     return predictions_data
 

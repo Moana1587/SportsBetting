@@ -584,10 +584,22 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
                     # Determine if prediction is over or under
                     if ou_pred > ou_value:
                         ou_pick = "OVER"
-                        ou_confidence = round(abs(ou_pred - ou_value) / ou_value * 100, 1)
+                        # Calculate confidence based on how far the prediction is from the line
+                        diff = abs(ou_pred - ou_value)
+                        # Use the model's accuracy as base confidence (73.8% for the best UO model)
+                        # Add confidence based on the difference from the line
+                        base_confidence = 73.8  # Model accuracy
+                        diff_confidence = min(20.0, diff * 100)  # Max 20% boost from difference
+                        ou_confidence = min(95.0, max(50.0, base_confidence + diff_confidence))
                     else:
                         ou_pick = "UNDER"
-                        ou_confidence = round(abs(ou_pred - ou_value) / ou_value * 100, 1)
+                        # Calculate confidence based on how far the prediction is from the line
+                        diff = abs(ou_pred - ou_value)
+                        # Use the model's accuracy as base confidence (73.8% for the best UO model)
+                        base_confidence = 73.8  # Model accuracy
+                        diff_confidence = min(20.0, diff * 100)  # Max 20% boost from difference
+                        ou_confidence = min(95.0, max(50.0, base_confidence + diff_confidence))
+                
                 
                 # Get spread prediction
                 spread_winner = away_team  # Default
@@ -605,13 +617,21 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
                     # Get spread value
                     spread_value = todays_games_spread[i] if i < len(todays_games_spread) else 1.5
                     
+                    # Calculate spread confidence based on how far the prediction is from the line
+                    # Use a more reasonable confidence calculation
+                    if spread_value != 0:
+                        # Calculate confidence as a percentage based on the difference
+                        diff = abs(spread_pred - spread_value)
+                        # Cap confidence at 95% and use a more reasonable scaling
+                        spread_confidence = min(95.0, max(50.0, 50.0 + (diff * 10)))
+                    else:
+                        spread_confidence = 50.0
+                    
                     # Determine spread winner based on prediction vs actual spread
                     if spread_pred > spread_value:
                         spread_winner = home_team
-                        spread_confidence = round(abs(spread_pred - spread_value) / abs(spread_value) * 100, 1) if spread_value != 0 else 50.0
                     else:
                         spread_winner = away_team
-                        spread_confidence = round(abs(spread_pred - spread_value) / abs(spread_value) * 100, 1) if spread_value != 0 else 50.0
                 
                 # Get ML values from the prediction results
                 ml_home_value = 100  # Default ML value
@@ -630,9 +650,14 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
                             ml_away_value = int(round(ml_pred[1]))
                 
                 # Create the formatted line with team name, OU prediction, and spread value
-                # Format: "Team A vs Team B, recommended bet: Team C, Spread:X.X, ML:Y, OU:Z.Z, Confidence:W.W%"
-                ml_confidence_pct = round(ml_confidence * 100, 1)
-                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner}, Spread:{spread_value}, ML:{ml_home_value}, OU:{ou_value}, Confidence:{ml_confidence_pct}%"
+                # Format: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Z.Z(confidence%)"
+                # Ensure ML confidence is properly capped and converted to percentage
+                ml_confidence_pct = min(95.0, max(50.0, round(ml_confidence * 100, 1)))
+                spread_confidence_pct = round(spread_confidence, 1)
+                ou_confidence_pct = round(ou_confidence, 1)
+                
+                
+                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner}, Spread:{spread_value}({spread_confidence_pct}%), ML:{ml_home_value}({ml_confidence_pct}%), OU:{ou_value}({ou_confidence_pct}%)"
                 txt_lines.append(line)
         
         # Write to TXT file

@@ -195,10 +195,11 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     # No need to reorder columns since frame_uo is a copy of frame_ml
     print(f"Making UO predictions on {len(frame_uo)} games...")
 
-    # Make UO predictions
+    # Make UO predictions with confidence
     for i in range(len(frame_uo)):
         row_data = frame_uo.iloc[i:i+1]  # Get single row as DataFrame
-        ou_predictions_array.append(models['uo'].predict(xgb.DMatrix(row_data)))
+        ou_pred = models['uo'].predict(xgb.DMatrix(row_data))
+        ou_predictions_array.append(ou_pred)
     
     # Make Spread predictions (if spread data provided)
     if todays_games_spread is not None and 'spread' in models:

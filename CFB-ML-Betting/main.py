@@ -327,6 +327,8 @@ def createTodaysCFBGames(games_df, teams_con, odds_con, season="2024-25"):
             game_info.append({
                 'home': home_team,
                 'away': away_team,
+                'home_conference': home_stats.get('conference', 'Unknown'),
+                'away_conference': away_stats.get('conference', 'Unknown'),
                 'kickoff': kickoff,
                 'venue': game.get('venue', ''),
                 'tv': game.get('tv', ''),
@@ -461,6 +463,8 @@ def run_xgboost_ou_value_predictions(X, game_info, prediction_results=None):
                 prediction_results[game_key] = {
                     'away_team': away,
                     'home_team': home,
+                    'away_conference': game.get('away_conference', 'Unknown'),
+                    'home_conference': game.get('home_conference', 'Unknown'),
                     'kickoff': kickoff,
                     'venue': venue
                 }
@@ -495,6 +499,7 @@ def run_xgboost_ou_value_predictions(X, game_info, prediction_results=None):
             print(f"{away} @ {home}")
             print(f"  Kickoff: {kickoff}")
             print(f"  Venue: {venue}")
+            print(f"  Conferences: {game.get('away_conference', 'Unknown')} @ {game.get('home_conference', 'Unknown')}")
             print(f"  Predicted OU: {pred_ou:.1f} points")
             print(f"  OU Value: {ou_value:.1f} points")
             print(f"  Edge vs Line: {edge:+.1f} points ({edge_direction})")
@@ -575,6 +580,8 @@ def run_xgboost_spread_value_predictions(X, game_info, prediction_results=None):
                 prediction_results[game_key] = {
                     'away_team': away,
                     'home_team': home,
+                    'away_conference': game.get('away_conference', 'Unknown'),
+                    'home_conference': game.get('home_conference', 'Unknown'),
                     'kickoff': kickoff,
                     'venue': venue
                 }
@@ -619,6 +626,7 @@ def run_xgboost_spread_value_predictions(X, game_info, prediction_results=None):
             print(f"{away} @ {home}")
             print(f"  Kickoff: {kickoff}")
             print(f"  Venue: {venue}")
+            print(f"  Conferences: {game.get('away_conference', 'Unknown')} @ {game.get('home_conference', 'Unknown')}")
             print(f"  Predicted Margin: {pred_spread:+.1f} points")
             print(f"  Prediction: {prediction}")
             print(f"  Recommended Bet: {recommended_team} {spread_direction}")
@@ -713,6 +721,8 @@ def run_xgboost_predictions(X, game_info, model_type="ML", prediction_results=No
                 prediction_results[game_key] = {
                     'away_team': away,
                     'home_team': home,
+                    'away_conference': game.get('away_conference', 'Unknown'),
+                    'home_conference': game.get('home_conference', 'Unknown'),
                     'kickoff': kickoff,
                     'venue': venue
                 }
@@ -742,6 +752,7 @@ def run_xgboost_predictions(X, game_info, model_type="ML", prediction_results=No
                 print(f"{away} @ {home}")
                 print(f"  Kickoff: {kickoff}")
                 print(f"  Venue: {venue}")
+                print(f"  Conferences: {game.get('away_conference', 'Unknown')} @ {game.get('home_conference', 'Unknown')}")
                 print(f"  Prediction: {prediction_labels[pred]} ({confidence:.1%} confidence)")
                 print(f"  ML Value: {ml_odds:+d}")
                 
@@ -805,6 +816,7 @@ def run_xgboost_predictions(X, game_info, model_type="ML", prediction_results=No
                 print(f"{away} @ {home}")
                 print(f"  Kickoff: {kickoff}")
                 print(f"  Venue: {venue}")
+                print(f"  Conferences: {game.get('away_conference', 'Unknown')} @ {game.get('home_conference', 'Unknown')}")
                 print(f"  Model Prediction: {prediction_labels[pred]} ({model_confidence:.1%} confidence)")
                 print(f"  Recommended Bet: {recommended_bet}")
                 print(f"  Spread Value: {spread_value:.1f} points")
@@ -830,6 +842,7 @@ def run_xgboost_predictions(X, game_info, model_type="ML", prediction_results=No
                 print(f"{away} @ {home}")
                 print(f"  Kickoff: {kickoff}")
                 print(f"  Venue: {venue}")
+                print(f"  Conferences: {game.get('away_conference', 'Unknown')} @ {game.get('home_conference', 'Unknown')}")
                 print(f"  Prediction: {prediction_labels[pred]} ({prob:.1%} confidence)")
                 
                 # Show betting lines if available
@@ -877,6 +890,8 @@ def export_predictions_to_csv(prediction_results, filename=None):
                 'game_key': game_key,
                 'away_team': data.get('away_team', ''),
                 'home_team': data.get('home_team', ''),
+                'away_conference': data.get('away_conference', 'Unknown'),
+                'home_conference': data.get('home_conference', 'Unknown'),
                 'kickoff': data.get('kickoff', ''),
                 'venue': data.get('venue', ''),
                 'spread_line': data.get('spread_line', 'N/A'),
