@@ -38,7 +38,6 @@ def fetch_cfb_predictions(ttl_hash=None):
         cmd = ["python", "main.py", "-all"]
         result = subprocess.run(cmd, cwd=PROJECT_PATHS['CFB'], 
                               capture_output=True, text=True, timeout=20)
-        print(result.stdout)
         if result.returncode != 0:
             log_debug(f"CFB primary command failed with return code {result.returncode}")
             log_debug(f"CFB stderr: {result.stderr}")
@@ -1648,8 +1647,8 @@ def parse_nhl_predictions(stdout):
         game_key = f"{away_team}:{home_team}"
         ou_predictions[game_key] = {'pick': ou_pick, 'value': ou_value}
     
-    # Look for the new TXT Export format with individual confidence values: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Z.Z(confidence%)"
-    txt_pattern = re.compile(r'(?P<home_team>[\w .]+) vs (?P<away_team>[\w .]+), recommended bet: (?P<recommended_team>[\w .]+), Spread:(?P<spread_value>[\d.+-]+)\((?P<spread_confidence>[\d.]+)%\), ML:(?P<ml_value>[\d+-]+)\((?P<ml_confidence>[\d.]+)%\), OU:(?P<ou_value>[\d.]+)\((?P<ou_confidence>[\d.]+)%\)', re.MULTILINE)
+    # Look for the new TXT Export format with integrated OU field: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Pick Value(confidence%)"
+    txt_pattern = re.compile(r'(?P<home_team>[\w .]+) vs (?P<away_team>[\w .]+), recommended bet: (?P<recommended_team>[\w .]+), Spread:(?P<spread_value>[\d.+-]+)\((?P<spread_confidence>[\d.]+)%\), ML:(?P<ml_value>[\d+-]+)\((?P<ml_confidence>[\d.]+)%\), OU:(?P<ou_pick>OVER|UNDER) (?P<ou_value>[\d.]+)\((?P<ou_confidence>[\d.]+)%\)', re.MULTILINE)
     
     for match in txt_pattern.finditer(stdout):
         home_team = match.group('home_team').strip()
@@ -1659,6 +1658,7 @@ def parse_nhl_predictions(stdout):
         spread_confidence = match.group('spread_confidence').strip()
         ml_value = match.group('ml_value').strip()
         ml_confidence = match.group('ml_confidence').strip()
+        ou_pick = match.group('ou_pick').strip()
         ou_value = match.group('ou_value').strip()
         ou_confidence = match.group('ou_confidence').strip()
         
@@ -1682,17 +1682,11 @@ def parse_nhl_predictions(stdout):
             formatted_spread = f"+{spread_value_rounded}"
         formatted_bet = f"{recommended_team} {formatted_spread}"
         
-        # Get Over/Under prediction from console output if available
-        game_key = f"{away_team}:{home_team}"
-        if game_key in ou_predictions:
-            ou_prediction = ou_predictions[game_key]['pick']
-            # Use the console OU value instead of the TXT value for consistency
-            ou_value_rounded = round(float(ou_predictions[game_key]['value']), 1)
-        else:
-            ou_prediction = "Over"  # Default fallback
+        # Use the OU prediction from the TXT format
+        ou_prediction = ou_pick
         
         # Create the raw prediction in the requested format with individual confidence values
-        raw_prediction = f"{away_team} vs {home_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_prediction} {ou_value_rounded}({ou_confidence_rounded}%)"
+        raw_prediction = f"{home_team} vs {away_team}, recommended bet: {recommended_team}, Spread:{formatted_spread}({spread_confidence_rounded}%), ML:{ml_value}({ml_confidence_rounded}%), OU:{ou_prediction} {ou_value_rounded}({ou_confidence_rounded}%)"
         
         games[game_key] = {
             'away_team': away_team,

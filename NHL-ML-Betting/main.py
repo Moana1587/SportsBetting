@@ -432,8 +432,9 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
                     else:
                         ou_pred = float(ou_pred)
                     
-                    # Get OU value - use predicted value if available, otherwise use default
+                    # Get OU value and confidence - use predicted value if available, otherwise use default
                     ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5)
+                    ou_value_confidence = prediction_results.get('ou_confidence', [])[i] if i < len(prediction_results.get('ou_confidence', [])) else 50.0
                     
                     # Determine if prediction is over or under
                     if ou_pred > ou_value:
@@ -499,9 +500,7 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
                     'ML_Away_Value': ml_away_value,
                     'Home_ML_Odds': home_team_odds[i] if i < len(home_team_odds) else -110,
                     'Away_ML_Odds': away_team_odds[i] if i < len(away_team_odds) else -110,
-                    'OU_Pick': ou_pick,
-                    'OU_Value': prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5),
-                    'OU_Confidence': ou_confidence,
+                    'OU': f"{ou_pick} {ou_value:.2f} ({round(ou_value_confidence, 1)}%)",
                     'Spread_Pick': spread_pick,
                     'Spread_Value': todays_games_spread[i] if i < len(todays_games_spread) else 0,
                     'Spread_Confidence': spread_confidence
@@ -522,7 +521,7 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
             for _, row in df.iterrows():
                 print(f"{row['Away_Team']} @ {row['Home_Team']}")
                 print(f"  ML: {row['ML_Winner']} ({row['ML_Confidence']}%) - Home: {row['ML_Home_Value']}, Away: {row['ML_Away_Value']}")
-                print(f"  O/U: {row['OU_Pick']} {row['OU_Value']} ({row['OU_Confidence']}%)")
+                print(f"  O/U: {row['OU']}")
                 print(f"  Spread: {row['Spread_Pick']} ({row['Spread_Confidence']}%)")
                 print()
         else:
@@ -544,8 +543,9 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
         # Process each game
         for i, (home_team, away_team) in enumerate(games):
             if i < len(todays_games_uo):
-                # Get OU value - use predicted value if available, otherwise use default
+                # Get OU value and confidence - use predicted value if available, otherwise use default
                 ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5)
+                ou_value_confidence = prediction_results.get('ou_confidence', [])[i] if i < len(prediction_results.get('ou_confidence', [])) else 50.0
                 
                 # Get ML prediction to determine winning team
                 ml_winner = home_team  # Default
@@ -650,14 +650,17 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
                             ml_away_value = int(round(ml_pred[1]))
                 
                 # Create the formatted line with team name, OU prediction, and spread value
-                # Format: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Z.Z(confidence%)"
+                # Format: "Team A vs Team B, recommended bet: Team C, Spread:X.X(confidence%), ML:Y(confidence%), OU:Pick Value(confidence%)"
                 # Ensure ML confidence is properly capped and converted to percentage
                 ml_confidence_pct = min(95.0, max(50.0, round(ml_confidence * 100, 1)))
                 spread_confidence_pct = round(spread_confidence, 1)
                 ou_confidence_pct = round(ou_confidence, 1)
+                ou_value_confidence_pct = round(ou_value_confidence, 1)
                 
+                # Combine OU pick and value into single field
+                ou_combined = f"{ou_pick} {ou_value:.2f}({ou_value_confidence_pct}%)"
                 
-                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner}, Spread:{spread_value}({spread_confidence_pct}%), ML:{ml_home_value}({ml_confidence_pct}%), OU:{ou_value}({ou_confidence_pct}%)"
+                line = f"{home_team} vs {away_team}, recommended bet: {ml_winner}, Spread:{spread_value}({spread_confidence_pct}%), ML:{ml_home_value}({ml_confidence_pct}%), OU:{ou_combined}"
                 txt_lines.append(line)
         
         # Write to TXT file

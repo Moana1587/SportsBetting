@@ -85,10 +85,12 @@ def prepare_training_data(data):
     return features, target
 
 def train_xgboost_model(features, target, num_iterations=100):
-    """Train XGBoost model for Over/Under value prediction with multiple iterations"""
+    """Train XGBoost model for Over/Under value prediction with multiple iterations and confidence estimation"""
     r2_results = []
     mse_results = []
     mae_results = []
+    best_model = None
+    best_r2 = 0
     
     print(f"Training XGBoost Over/Under value model with {num_iterations} iterations...")
     
@@ -124,12 +126,66 @@ def train_xgboost_model(features, target, num_iterations=100):
         mae_results.append(mae)
         
         # Save best model
-        if r2 == max(r2_results):
+        if r2 > best_r2:
+            best_r2 = r2
+            best_model = model
             model_path = f'../../Models/XGBoost_{r2_percent}%_UO-9.json'
             model.save_model(model_path)
             print(f"New best R²: {r2_percent}% - Model saved to {model_path}")
     
-    return r2_results, mse_results, mae_results
+    return r2_results, mse_results, mae_results, best_model
+
+def create_ensemble_models(features, target, num_models=10):
+    """Create an ensemble of models for confidence estimation"""
+    print(f"Creating ensemble of {num_models} models for confidence estimation...")
+    
+    ensemble_models = []
+    
+    for i in tqdm(range(num_models)):
+        # Split data with different random states
+        x_train, x_test, y_train, y_test = train_test_split(
+            features, target, test_size=0.1, random_state=i*42
+        )
+        
+        # XGBoost parameters for regression
+        model = xgb.XGBRegressor(
+            max_depth=8,
+            eta=0.01,
+            n_estimators=1000,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=i*42,
+            objective='reg:squarederror'
+        )
+        
+        # Train model
+        model.fit(x_train, y_train)
+        ensemble_models.append(model)
+    
+    return ensemble_models
+
+def predict_with_confidence(model, ensemble_models, features):
+    """Make predictions with confidence intervals using ensemble"""
+    # Get prediction from main model
+    main_prediction = model.predict(features)
+    
+    # Get predictions from ensemble
+    ensemble_predictions = []
+    for ensemble_model in ensemble_models:
+        pred = ensemble_model.predict(features)
+        ensemble_predictions.append(pred)
+    
+    # Calculate confidence based on prediction variance
+    ensemble_predictions = np.array(ensemble_predictions)
+    prediction_std = np.std(ensemble_predictions, axis=0)
+    prediction_mean = np.mean(ensemble_predictions, axis=0)
+    
+    # Calculate confidence percentage (higher confidence = lower variance)
+    # Normalize to 0-100% range
+    max_std = np.max(prediction_std) if len(prediction_std) > 0 else 1.0
+    confidence_percentage = np.clip((1 - prediction_std / max_std) * 100, 0, 100)
+    
+    return main_prediction, confidence_percentage
 
 def main():
     """Main training function"""
@@ -140,8 +196,30 @@ def main():
         # Prepare training data
         features, target = prepare_training_data(data)
         
-        # Train model
-        r2_results, mse_results, mae_results = train_xgboost_model(features, target)
+        # Train main model
+        r2_results, mse_results, mae_results, best_model = train_xgboost_model(features, target)
+        
+        # Create ensemble for confidence estimation
+        ensemble_models = create_ensemble_models(features, target, num_models=10)
+        
+        # Save ensemble models
+        ensemble_dir = "../../Models/Ensemble_UO"
+        os.makedirs(ensemble_dir, exist_ok=True)
+        
+        for i, model in enumerate(ensemble_models):
+            model_path = os.path.join(ensemble_dir, f"ensemble_model_{i}.json")
+            model.save_model(model_path)
+        
+        print(f"Saved {len(ensemble_models)} ensemble models to {ensemble_dir}")
+        
+        # Test confidence prediction on a sample
+        if best_model is not None:
+            sample_features = features.iloc[:5]  # Test on first 5 samples
+            predictions, confidence = predict_with_confidence(best_model, ensemble_models, sample_features)
+            
+            print(f"\nSample predictions with confidence:")
+            for i in range(len(sample_features)):
+                print(f"  Sample {i+1}: OU={predictions[i]:.2f}, Confidence={confidence[i]:.1f}%")
         
         # Print results
         print(f"\nTraining completed!")
