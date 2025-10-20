@@ -88,22 +88,14 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
         print("Error: No data provided for predictions.")
         return
     
-    print(f"Making predictions for {len(games)} games...")
-    print(f"Data shape: {data.shape} (rows: {data.shape[0]}, features: {data.shape[1]})")
-    
     # Make ML predictions
     ml_predictions_array = []
     try:
         for i, row in enumerate(data):
-            if i == 0:  # Debug first row
-                print(f"First row shape: {row.shape}, sample values: {row[:5]}")
             prediction = xgb_ml.predict(xgb.DMatrix(np.array([row])))
             ml_predictions_array.append(prediction)
     except Exception as e:
         print(f"Error making ML predictions: {e}")
-        print(f"Data shape: {data.shape}")
-        print(f"First row shape: {data[0].shape if len(data) > 0 else 'No data'}")
-        print(f"Expected features: Check model training logs")
         return
 
     # Make spread predictions using the spread model
@@ -114,7 +106,6 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
         spread_model = load_best_spread_model()
         
         if spread_model is not None:
-            print("Making spread predictions...")
             for i, row in enumerate(data):
                 # Create feature array for spread prediction
                 exclude_columns = [
@@ -131,13 +122,9 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
                 # Make spread prediction
                 prediction = spread_model.predict(xgb.DMatrix(np.array([feature_data])))
                 spread_predictions_array.append(float(prediction[0]))
-                print(f"  Game {i+1}: Predicted spread = {prediction[0]:.2f}")
         else:
-            print("Warning: No spread model available, using default spread values")
             spread_predictions_array = [0.0] * len(games)
     except Exception as e:
-        print(f"Error making spread predictions: {e}")
-        print("Using default spread values as fallback")
         spread_predictions_array = [0.0] * len(games)
 
     # Prepare OU data with same feature selection as ML data
@@ -155,39 +142,26 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
     # Get feature columns (same as ML prediction)
     feature_columns = [col for col in frame_uo.columns if col not in exclude_columns]
     
-    print(f"OU data - Using {len(feature_columns)} feature columns")
-    print(f"OU feature columns: {feature_columns[:10]}...")
-    
     # Create OU data with only feature columns
     ou_feature_data = frame_uo[feature_columns].values
     
     # Convert to float, handling any remaining non-numeric values
     try:
         ou_data = ou_feature_data.astype(float)
-        print("Successfully converted OU data to float")
     except ValueError as e:
-        print(f"Error converting OU data to float: {e}")
-        print("Attempting fallback conversion method...")
-        
         # Fallback: convert each column individually and handle errors
         ou_data_df = pd.DataFrame(ou_feature_data, columns=feature_columns)
         ou_data_df = ou_data_df.apply(pd.to_numeric, errors='coerce').fillna(0)
         ou_data = ou_data_df.values.astype(float)
-        print("Used fallback conversion method for OU data")
 
     # Make OU predictions
-    print(f"OU data shape: {ou_data.shape} (rows: {ou_data.shape[0]}, features: {ou_data.shape[1]})")
     ou_predictions_array = []
     try:
         for i, row in enumerate(ou_data):
-            if i == 0:  # Debug first row
-                print(f"OU first row shape: {row.shape}, sample values: {row[:5]}")
             prediction = xgb_uo.predict(xgb.DMatrix(np.array([row])))
             ou_predictions_array.append(prediction)
     except Exception as e:
         print(f"Error making OU predictions: {e}")
-        print(f"OU data shape: {ou_data.shape}")
-        print(f"OU first row shape: {ou_data[0].shape if len(ou_data) > 0 else 'No data'}")
         return
 
     # Prepare structured data for export
@@ -269,62 +243,33 @@ def xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home
         predictions_data.append(game_prediction)
         count += 1
     
-    # Output in multiple formats for different applications to catch
-    
-    # Custom JSON encoder to handle numpy types
-    class NumpyEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, np.integer):
-                return int(obj)
-            elif isinstance(obj, np.floating):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return super(NumpyEncoder, self).default(obj)
-    
-    # 1. JSON format (for applications that can parse JSON)
-    print("===JSON_OUTPUT_START===")
-    print(json.dumps(predictions_data, indent=2, cls=NumpyEncoder))
-    print("===JSON_OUTPUT_END===")
-    
-    # 2. CSV format (for spreadsheet applications)
-    print("===CSV_OUTPUT_START===")
-    print("Game,Recommended_Team,Bet_Type,Spread,Confidence,OU_Prediction,OU_Line,OU_Confidence,Predicted_Spread,Actual_Spread,Spread_Confidence")
+    # Print only the integrated recommended bet format
     for pred in predictions_data:
-        print(f'"{pred["game"]}",{pred["recommended_bet"]["team"]},{pred["recommended_bet"]["type"]},{pred["recommended_bet"]["spread"]},{pred["recommended_bet"]["confidence"]},{pred["over_under"]["prediction"]},{pred["over_under"]["line"]},{pred["over_under"]["confidence"]},{pred["spread_analysis"]["predicted"]},{pred["spread_analysis"]["actual"]},{pred["spread_analysis"]["confidence"]}')
-    print("===CSV_OUTPUT_END===")
-    
-    # 3. Simple text format (for basic text processing)
-    print("===TEXT_OUTPUT_START===")
-    for pred in predictions_data:
-        # Format the recommended bet with ou value,spread value style
-        ou_value = pred['over_under']['line']
+        # Extract game teams
+        home_team = pred['home_team']
+        away_team = pred['away_team']
+        
+        # Get recommended team
+        recommended_team = pred['recommended_bet']['team']
+        
+        # Format spread with sign and confidence
         spread_value = pred['recommended_bet']['spread']
+        spread_confidence = pred['recommended_bet']['confidence']
         
-        if pred['recommended_bet']['type'] == "ML":
-            formatted_bet = f"{pred['recommended_bet']['team']} {ou_value},{spread_value}"
-            print(f"{pred['game']}, recommended bet: {formatted_bet}, confidence: {pred['recommended_bet']['confidence']}%")
+        # Format ML odds (convert confidence to ML odds format)
+        ml_confidence = pred['recommended_bet']['confidence']
+        if ml_confidence > 50:
+            # Convert confidence to ML odds (simplified)
+            ml_odds = int(-100 * ml_confidence / (100 - ml_confidence))
         else:
-            formatted_bet = f"{pred['recommended_bet']['team']} {pred['recommended_bet']['type']} {pred['recommended_bet']['spread']}"
-            print(f"{pred['game']}, recommended bet: {formatted_bet}, confidence: {pred['recommended_bet']['confidence']}%")
+            ml_odds = int(100 * (100 - ml_confidence) / ml_confidence)
         
-        # Additional detailed information
-        print(f"  OU Prediction: {pred['over_under']['prediction']} {pred['over_under']['line']} (confidence: {pred['over_under']['confidence']}%)")
-        print(f"  Spread Analysis: Predicted {pred['spread_analysis']['predicted']:.2f}, Actual {pred['spread_analysis']['actual']:.2f} (confidence: {pred['spread_analysis']['confidence']:.1f}%)")
-    print("===TEXT_OUTPUT_END===")
-    
-    # 4. XML format (for XML processing applications)
-    print("===XML_OUTPUT_START===")
-    print("<?xml version='1.0' encoding='UTF-8'?>")
-    print("<predictions>")
-    for pred in predictions_data:
-        print(f"  <game home='{pred['home_team']}' away='{pred['away_team']}'>")
-        print(f"    <recommended_bet team='{pred['recommended_bet']['team']}' type='{pred['recommended_bet']['type']}' spread='{pred['recommended_bet']['spread']}' confidence='{pred['recommended_bet']['confidence']}'/>")
-        print(f"    <over_under prediction='{pred['over_under']['prediction']}' line='{pred['over_under']['line']}' confidence='{pred['over_under']['confidence']}'/>")
-        print(f"    <spread_analysis predicted='{pred['spread_analysis']['predicted']}' actual='{pred['spread_analysis']['actual']}' confidence='{pred['spread_analysis']['confidence']}'/>")
-        print("  </game>")
-    print("</predictions>")
-    print("===XML_OUTPUT_END===")
-
-    print("\n" + "="*60)
+        # Format OU prediction
+        ou_prediction = pred['over_under']['prediction']
+        ou_line = pred['over_under']['line']
+        ou_confidence = pred['over_under']['confidence']
+        
+        # Create the integrated line in the requested format
+        integrated_line = f"{home_team} vs {away_team}, recommended bet: {recommended_team}, Spread:{spread_value}({spread_confidence:.1f}%), ML:{ml_odds}({ml_confidence:.1f}%), OU:{ou_prediction} {ou_line}({ou_confidence:.1f}%)"
+        print(integrated_line)
     deinit()

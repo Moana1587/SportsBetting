@@ -13,7 +13,23 @@ def cfb_schedule_today_espn(tz="America/Los_Angeles", groups="80"):
     """Get today's college football schedule from ESPN API."""
     today = datetime.now(ZoneInfo(tz)).strftime("%Y%m%d")
     url = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
-    js = requests.get(url, params={"dates": today, "groups": groups}, timeout=30).json()
+    
+    # Try to get all games by not specifying groups parameter, or try multiple group values
+    try:
+        # First try without groups parameter to get all games
+        response = requests.get(url, params={"dates": today}, timeout=30)
+        response.raise_for_status()
+        js = response.json()
+    except Exception as e:
+        print(f"Warning: First API call failed ({e}), trying with groups parameter...")
+        try:
+            # Fallback to original method with groups parameter
+            response = requests.get(url, params={"dates": today, "groups": groups}, timeout=30)
+            response.raise_for_status()
+            js = response.json()
+        except Exception as e2:
+            print(f"Error: Both API calls failed. First error: {e}, Second error: {e2}")
+            return pd.DataFrame()  # Return empty DataFrame
 
     rows = []
     for e in js.get("events", []):
@@ -23,22 +39,60 @@ def cfb_schedule_today_espn(tz="America/Los_Angeles", groups="80"):
             continue
         home = next((c for c in comps if c.get("homeAway")=="home"), comps[0])
         away = next((c for c in comps if c.get("homeAway")=="away"), comps[1])
+        
+        # Extract team names safely
+        home_team_name = home.get("team", {}).get("displayName", "Unknown")
+        away_team_name = away.get("team", {}).get("displayName", "Unknown")
+        
+        if home_team_name == "Unknown" or away_team_name == "Unknown":
+            print(f"Warning: Could not extract team names for game {e.get('id', 'unknown')}, skipping...")
+            continue
 
         iso = comp.get("date") or e.get("date")
-        # convert ISO time to your timezone (kickoff)
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(ZoneInfo(tz))
+        
+        # Handle missing or invalid date
+        if not iso:
+            print(f"Warning: No date found for game {e.get('id', 'unknown')}, skipping...")
+            continue
+            
+        try:
+            # convert ISO time to your timezone (kickoff)
+            dt = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(ZoneInfo(tz))
+            kickoff_local = dt.strftime("%Y-%m-%d %H:%M")
+        except Exception as date_error:
+            print(f"Warning: Could not parse date '{iso}' for game {e.get('id', 'unknown')}: {date_error}")
+            # Use current time as fallback
+            kickoff_local = datetime.now(ZoneInfo(tz)).strftime("%Y-%m-%d %H:%M")
 
         rows.append({
             "eventId": e.get("id"),
-            "kickoff_local": dt.strftime("%Y-%m-%d %H:%M"),
+            "kickoff_local": kickoff_local,
             "status": e.get("status", {}).get("type", {}).get("description"),
-            "away": away.get("team", {}).get("displayName"),
-            "home": home.get("team", {}).get("displayName"),
+            "away": away_team_name,
+            "home": home_team_name,
             "venue": comp.get("venue", {}).get("fullName"),
             "tv": ",".join([b.get("name") for b in comp.get("broadcasts", []) if b.get("name")]),
         })
 
-    df = pd.DataFrame(rows).sort_values(["kickoff_local","home","away"])
+    if not rows:
+        print("No valid games found in the API response.")
+        return pd.DataFrame()
+    
+    df = pd.DataFrame(rows)
+    
+    # Check if we have the required columns
+    if 'kickoff_local' not in df.columns:
+        print("Error: 'kickoff_local' column not found in DataFrame")
+        print(f"Available columns: {list(df.columns)}")
+        return pd.DataFrame()
+    
+    df = df.sort_values(["kickoff_local","home","away"])
+    
+    # Log all games found with their status
+    print(f"Found {len(df)} CFB games scheduled for today:")
+    for _, game in df.iterrows():
+        print(f"   {game['away']} @ {game['home']} - {game['kickoff_local']} ({game['status']})")
+    
     return df
 
 
@@ -284,10 +338,15 @@ def createTodaysCFBGames(games_df, teams_con, odds_con, season="2024-25"):
     match_data = []
     game_info = []
     
+    print(f"Preparing prediction data for {len(games_df)} games...")
+    
     for idx, game in games_df.iterrows():
         home_team = game['home']
         away_team = game['away']
         kickoff = game['kickoff_local']
+        status = game.get('status', 'Unknown')
+        
+        print(f"   Processing: {away_team} @ {home_team} - {kickoff} ({status})")
         
         # Get team stats
         home_stats = get_team_stats_for_prediction(teams_con, home_team, season)
@@ -326,6 +385,8 @@ def createTodaysCFBGames(games_df, teams_con, odds_con, season="2024-25"):
                 'tv': game.get('tv', ''),
                 'betting_lines': betting_lines  # Include betting lines in game_info
             })
+        else:
+            print(f"     Warning: Could not find team data for {home_team} vs {away_team}")
     
     if match_data:
         games_df = pd.DataFrame(match_data)
@@ -773,13 +834,20 @@ def export_predictions_to_csv(prediction_results, filename=None):
 
 
 def main():
+    print("CFB XGBoost Prediction System")
+    print("=" * 50)
+    
     # Get today's games from ESPN
     try:
         games_df = cfb_schedule_today_espn()
         if games_df.empty:
+            print("No CFB games found for today.")
             return
         
+        print(f"\nProcessing all {len(games_df)} games scheduled for today:")
+        
     except Exception as e:
+        print(f"Error fetching CFB schedule: {e}")
         return
     
     # Connect to team stats database

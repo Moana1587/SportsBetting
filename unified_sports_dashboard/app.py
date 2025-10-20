@@ -810,45 +810,91 @@ def parse_nfl_predictions(stdout):
     if "No games found" in stdout or "No games available" in stdout:
         return {}
     
-    # 1. Look for the TEXT_OUTPUT format from XGBoost_Runner.py
-    # New format: "Team A vs Team B, recommended bet: Team C ou_value,spread_value, confidence: X.X%"
-    text_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<ou_value>[\d.]+),(?P<spread_value>[+-]?[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+    # 1. Look for the new clean integrated format
+    # Format: "Home Team vs Away Team, recommended bet: Recommended Team, Spread:value(confidence%), ML:odds(confidence%), OU:prediction line(confidence%)"
+    integrated_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+), Spread:(?P<spread_value>[+-]?[\d.]+)\((?P<spread_confidence>[\d.]+)%\), ML:(?P<ml_odds>-?\d+)\((?P<ml_confidence>[\d.]+)%\), OU:(?P<ou_prediction>OVER|UNDER) (?P<ou_line>[\d.]+)\((?P<ou_confidence>[\d.]+)%\)', re.MULTILINE)
     
-    for match in text_pattern.finditer(stdout):
+    for match in integrated_pattern.finditer(stdout):
         home_team = match.group('home_team').strip()
         away_team = match.group('away_team').strip()
         recommended_team = match.group('recommended_team').strip()
-        ou_value = match.group('ou_value').strip()
         spread_value = match.group('spread_value').strip()
-        confidence = match.group('confidence').strip()
+        spread_confidence = match.group('spread_confidence').strip()
+        ml_odds = match.group('ml_odds').strip()
+        ml_confidence = match.group('ml_confidence').strip()
+        ou_prediction = match.group('ou_prediction').strip()
+        ou_line = match.group('ou_line').strip()
+        ou_confidence = match.group('ou_confidence').strip()
         
         game_key = f"{away_team}:{home_team}"
         
-        # Create bet description - this is typically ML since the format shows ou_value,spread_value
+        # Create bet description - typically ML since that's the recommended bet
         bet_description = f"{recommended_team} ML"
         
         # Round the values for better readability
         spread_value_rounded = round(float(spread_value), 2)
-        confidence_rounded = round(float(confidence), 1)
-        ou_value_rounded = round(float(ou_value), 1)
+        spread_confidence_rounded = round(float(spread_confidence), 1)
+        ml_confidence_rounded = round(float(ml_confidence), 1)
+        ou_line_rounded = round(float(ou_line), 1)
+        ou_confidence_rounded = round(float(ou_confidence), 1)
         
         games[game_key] = {
             'away_team': away_team,
             'home_team': home_team,
             'recommended_bet': bet_description,
-            'confidence': f"{confidence_rounded}%",
+            'confidence': f"{ml_confidence_rounded}%",
             'bet_category': 'moneyline',
             'sport': 'NFL',
-            'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team} {spread_value_rounded}, confidence: {confidence_rounded}%",
+            'raw_prediction': f"{home_team} vs {away_team}, recommended bet: {recommended_team}, Spread:{spread_value_rounded}({spread_confidence_rounded}%), ML:{ml_odds}({ml_confidence_rounded}%), OU:{ou_prediction} {ou_line_rounded}({ou_confidence_rounded}%)",
             'spread_prediction': f"{recommended_team} {spread_value_rounded}",
             'spread_line': str(spread_value_rounded),
-            'spread_confidence': f"{confidence_rounded}%",
-            'ou_prediction': f"OVER {ou_value_rounded}",
-            'ou_value': str(ou_value_rounded),
-            'ou_confidence': f"{confidence_rounded}%"
+            'spread_confidence': f"{spread_confidence_rounded}%",
+            'ou_prediction': f"{ou_prediction} {ou_line_rounded}",
+            'ou_value': str(ou_line_rounded),
+            'ou_confidence': f"{ou_confidence_rounded}%",
+            'ml_odds': ml_odds,
+            'ml_confidence': f"{ml_confidence_rounded}%"
         }
     
-    # 2. Look for JSON format from XGBoost_Runner.py
+    # 2. Look for the old TEXT_OUTPUT format (fallback)
+    if not games:
+        text_pattern = re.compile(r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<ou_value>[\d.]+),(?P<spread_value>[+-]?[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
+        
+        for match in text_pattern.finditer(stdout):
+            home_team = match.group('home_team').strip()
+            away_team = match.group('away_team').strip()
+            recommended_team = match.group('recommended_team').strip()
+            ou_value = match.group('ou_value').strip()
+            spread_value = match.group('spread_value').strip()
+            confidence = match.group('confidence').strip()
+            
+            game_key = f"{away_team}:{home_team}"
+            
+            # Create bet description - this is typically ML since the format shows ou_value,spread_value
+            bet_description = f"{recommended_team} ML"
+            
+            # Round the values for better readability
+            spread_value_rounded = round(float(spread_value), 2)
+            confidence_rounded = round(float(confidence), 1)
+            ou_value_rounded = round(float(ou_value), 1)
+            
+            games[game_key] = {
+                'away_team': away_team,
+                'home_team': home_team,
+                'recommended_bet': bet_description,
+                'confidence': f"{confidence_rounded}%",
+                'bet_category': 'moneyline',
+                'sport': 'NFL',
+                'raw_prediction': f"{away_team} vs {home_team}, recommended bet: {recommended_team} {spread_value_rounded}, confidence: {confidence_rounded}%",
+                'spread_prediction': f"{recommended_team} {spread_value_rounded}",
+                'spread_line': str(spread_value_rounded),
+                'spread_confidence': f"{confidence_rounded}%",
+                'ou_prediction': f"OVER {ou_value_rounded}",
+                'ou_value': str(ou_value_rounded),
+                'ou_confidence': f"{confidence_rounded}%"
+            }
+    
+    # 3. Look for JSON format from XGBoost_Runner.py
     if not games:
         json_start = stdout.find("===JSON_OUTPUT_START===")
         json_end = stdout.find("===JSON_OUTPUT_END===")
@@ -920,7 +966,7 @@ def parse_nfl_predictions(stdout):
             except Exception as e:
                 print(f"Error parsing NFL JSON output: {e}")
     
-    # 3. Look for the simple format: "Team A vs Team B, recommended bet: Team A +1.5, confidence: 51.6%"
+    # 4. Look for the simple format: "Team A vs Team B, recommended bet: Team A +1.5, confidence: 51.6%"
     if not games:
         simple_pattern = re.compile(r'(?P<away_team>[\w ]+) vs (?P<home_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+) (?P<bet_type>[+-]?[\d.]+), confidence: (?P<confidence>[\d.]+)%', re.MULTILINE)
         
@@ -958,7 +1004,7 @@ def parse_nfl_predictions(stdout):
                 'spread_confidence': f"{confidence_rounded}%" if bet_category == "spread" else None
             }
     
-    # 4. If no simple format found, try the original NFL parsing
+    # 5. If no simple format found, try the original NFL parsing
     if not games:
         data_re = re.compile(r'(?P<home_team>[\w\s]+)\s+\((?P<home_confidence>[\d\.]+)%\)\s+vs\s+(?P<away_team>[\w\s]+):\s+(?P<ou_pick>OVER|UNDER)\s+(?P<ou_value>[\d\.]+)\s+\((?P<ou_confidence>[\d\.]+)%\)', re.MULTILINE)
         ev_re = re.compile(r'(?P<team>[\w\s]+)\s+EV:\s+(?P<ev>[-\d\.]+)', re.MULTILINE)

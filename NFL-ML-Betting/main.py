@@ -54,11 +54,6 @@ def load_best_spread_model():
             break
     
     if model_dir is None:
-        print(f"Warning: Model directory not found in any of these locations:")
-        for dir_path in possible_dirs:
-            print(f"  - {dir_path}")
-        print("Please train spread models first by running:")
-        print("  python src/Train-Models/XGBoost_Model_Spread.py")
         return None
     
     # Find all spread models - try different patterns
@@ -78,13 +73,6 @@ def load_best_spread_model():
     model_files = list(set(model_files))
     
     if not model_files:
-        print(f"Warning: No spread models found in {model_dir}")
-        print("Available models:")
-        all_models = glob.glob(os.path.join(model_dir, "*.json"))
-        for model in all_models:
-            print(f"  - {os.path.basename(model)}")
-        print("\nTo create spread models, run:")
-        print("  python src/Train-Models/XGBoost_Model_Spread.py")
         return None
     
     # Sort by MAE (lower is better) and get the best one
@@ -107,31 +95,13 @@ def load_best_spread_model():
     
     # Sort models by MAE and show all available options
     sorted_models = sorted(model_files, key=extract_mae)
-    print(f"Available spread models (sorted by performance):")
-    for i, model in enumerate(sorted_models):
-        mae = extract_mae(model)
-        if mae != float('inf'):
-            status = " [BEST]" if i == 0 else ""
-            print(f"  {i+1}. {os.path.basename(model)} (Score: {mae:.1f}){status}")
-        else:
-            status = " [BEST]" if i == 0 else ""
-            print(f"  {i+1}. {os.path.basename(model)}{status}")
-    
     best_model = sorted_models[0]
-    best_score = extract_mae(best_model)
-    
-    print(f"\nLoading best spread model: {os.path.basename(best_model)}")
-    if best_score != float('inf'):
-        print(f"Model performance score: {best_score:.1f}")
     
     try:
         booster = xgb.Booster()
         booster.load_model(best_model)
-        print(f"Successfully loaded spread model: {os.path.basename(best_model)}")
         return booster
     except Exception as e:
-        print(f"Error loading spread model {best_model}: {e}")
-        print("Please ensure the model file is valid and try training a new model.")
         return None
 
 def load_best_uo_model():
@@ -150,9 +120,6 @@ def load_best_uo_model():
             break
     
     if model_dir is None:
-        print(f"Warning: Model directory not found in any of these locations:")
-        for dir_path in possible_dirs:
-            print(f"  - {dir_path}")
         return None
     
     # Find all UO models
@@ -160,7 +127,6 @@ def load_best_uo_model():
     model_files = glob.glob(os.path.join(model_dir, pattern))
     
     if not model_files:
-        print(f"Warning: No UO models found in {model_dir}")
         return None
     
     # Sort by accuracy and get the best one
@@ -175,14 +141,11 @@ def load_best_uo_model():
     best_model = max(model_files, key=extract_accuracy)
     accuracy = extract_accuracy(best_model)
     
-    print(f"Loading best UO model: {os.path.basename(best_model)} ({accuracy}%)")
-    
     try:
         booster = xgb.Booster()
         booster.load_model(best_model)
         return booster
     except Exception as e:
-        print(f"Error loading UO model {best_model}: {e}")
         return None
 
 def predict_spread(game_data, spread_model):
@@ -200,7 +163,6 @@ def predict_spread(game_data, spread_model):
         feature_columns = [col for col in game_data.index if col not in exclude_columns]
         
         if not feature_columns:
-            print("Warning: No feature columns found for spread prediction!")
             return 0.0
         
         # Create feature array
@@ -224,7 +186,6 @@ def predict_spread(game_data, spread_model):
         return predicted_spread
         
     except Exception as e:
-        print(f"Error predicting spread: {e}")
         return 0.0  # Default fallback
 
 def predict_ou_line(game_data, uo_model):
@@ -279,7 +240,6 @@ def predict_ou_line(game_data, uo_model):
         return predicted_total
         
     except Exception as e:
-        print(f"Error predicting OU line: {e}")
         return 45.0  # Default fallback
 
 def get_team_index(team_name, team_df):
@@ -311,22 +271,15 @@ def createTodaysGames(games, team_df, odds, uo_model=None, spread_model=None):
     home_team_odds = []
     away_team_odds = []
 
-    print(f"Processing {len(games)} games for today...")
-
     for game in games:
         home_team = game[0]
         away_team = game[1]
-        
-        print(f"Processing: {away_team} @ {home_team}")
         
         # Get team indices using the new mapping function
         home_team_idx = get_team_index(home_team, team_df)
         away_team_idx = get_team_index(away_team, team_df)
         
         if home_team_idx is None or away_team_idx is None:
-            print(f"  Skipping - team not found in database")
-            print(f"    Home team '{home_team}' found: {home_team_idx is not None}")
-            print(f"    Away team '{away_team}' found: {away_team_idx is not None}")
             continue
 
         # Get team stats first (needed for OU prediction)
@@ -357,11 +310,9 @@ def createTodaysGames(games, team_df, odds, uo_model=None, spread_model=None):
                     else:
                         predicted_spread = predict_spread(stats, spread_model)
                         todays_games_spread.append(predicted_spread)
-                        print(f"  Predicted spread: {predicted_spread}")
                     home_team_odds.append(game_odds.get(home_team, {}).get('money_line_odds', 0))
                     away_team_odds.append(game_odds.get(away_team, {}).get('money_line_odds', 0))
                 else:
-                    print(f"  No odds found for {game_key}, predicting OU line and spread...")
                     # Predict OU line and spread using models
                     predicted_ou = predict_ou_line(stats, uo_model)
                     predicted_spread = predict_spread(stats, spread_model)
@@ -369,10 +320,7 @@ def createTodaysGames(games, team_df, odds, uo_model=None, spread_model=None):
                     todays_games_spread.append(predicted_spread)
                     home_team_odds.append(0)
                     away_team_odds.append(0)
-                    print(f"  Predicted OU line: {predicted_ou}")
-                    print(f"  Predicted spread: {predicted_spread}")
             except Exception as e:
-                print(f"  Error processing odds: {e}")
                 # Predict OU line and spread using models as fallback
                 predicted_ou = predict_ou_line(stats, uo_model)
                 predicted_spread = predict_spread(stats, spread_model)
@@ -380,8 +328,6 @@ def createTodaysGames(games, team_df, odds, uo_model=None, spread_model=None):
                 todays_games_spread.append(predicted_spread)
                 home_team_odds.append(0)
                 away_team_odds.append(0)
-                print(f"  Using predicted OU line: {predicted_ou}")
-                print(f"  Using predicted spread: {predicted_spread}")
         else:
             # Predict OU line and spread using models instead of manual input
             predicted_ou = predict_ou_line(stats, uo_model)
@@ -390,14 +336,10 @@ def createTodaysGames(games, team_df, odds, uo_model=None, spread_model=None):
             todays_games_spread.append(predicted_spread)
             home_team_odds.append(0)
             away_team_odds.append(0)
-            print(f"  Predicted OU line: {predicted_ou}")
-            print(f"  Predicted spread: {predicted_spread}")
 
         match_data.append(stats)
-        print(f"  Added game data successfully")
 
     if not match_data:
-        print("No valid games found!")
         return None, None, None, None, None
 
     # Create final dataframe
@@ -423,13 +365,9 @@ def createTodaysGames(games, team_df, odds, uo_model=None, spread_model=None):
     # Get feature columns (same as training)
     feature_columns = [col for col in frame_ml.columns if col not in exclude_columns]
     
-    print(f"Excluding {len(exclude_columns)} non-feature columns")
-    print(f"Using {len(feature_columns)} feature columns for predictions")
-    print(f"Feature columns: {feature_columns[:10]}...")  # Show first 10
     
     # Create data with only feature columns
     if not feature_columns:
-        print("Warning: No feature columns found! Using all numeric columns...")
         # Fallback to numeric columns only
         numeric_exclude = ['TEAM_NAME', 'TEAM_NAME.1', 'Date', 'Date.1', 'index', 'index.1', 'SEASON', 'SEASON.1']
         feature_columns = [col for col in frame_ml.columns if col not in numeric_exclude]
@@ -439,37 +377,21 @@ def createTodaysGames(games, team_df, odds, uo_model=None, spread_model=None):
     # Convert to float, handling any remaining non-numeric values
     try:
         data = feature_data.astype(float)
-        print("Successfully converted data to float")
     except ValueError as e:
-        print(f"Error converting to float: {e}")
-        print("Attempting fallback conversion method...")
-        
         # Fallback: convert each column individually and handle errors
         data_df = pd.DataFrame(feature_data, columns=feature_columns)
         data_df = data_df.apply(pd.to_numeric, errors='coerce').fillna(0)
         data = data_df.values.astype(float)
-        print("Used fallback conversion method successfully")
 
-    print(f"Created dataset with {len(data)} games and {data.shape[1]} features")
-    print(f"Feature count validation: {data.shape[1]} features (should match model training)")
     return data, todays_games_uo, todays_games_spread, frame_ml, home_team_odds, away_team_odds
 
 
 def main():
-    print("NFL ML Betting Prediction System")
-    print("=" * 50)
-    
     # Load UO model for OU line prediction
-    print("Loading UO model for OU line prediction...")
     uo_model = load_best_uo_model()
-    if uo_model is None:
-        print("Warning: Could not load UO model. OU lines will use default values.")
     
     # Load spread model for spread prediction
-    print("Loading spread model for spread prediction...")
     spread_model = load_best_spread_model()
-    if spread_model is None:
-        print("Warning: Could not load spread model. Spreads will use default values.")
     
     # Load team data from database
     try:
@@ -480,26 +402,18 @@ def main():
         team_tables = [t[0] for t in tables.values if 'nfl_team_stats' in t[0]]
         
         if not team_tables:
-            print("No team stats tables found in database!")
-            print("Please run Get_Data.py first to populate team statistics.")
             return
         
         # Use the most recent table (highest year)
         latest_table = sorted(team_tables)[-1]
-        print(f"Using team stats from: {latest_table}")
         
         team_df = pd.read_sql_query(f"SELECT * FROM `{latest_table}`", con)
         con.close()
         
         if team_df.empty:
-            print("No team data found in database!")
             return
-            
-        print(f"Loaded {len(team_df)} teams from database")
         
     except Exception as e:
-        print(f"Error loading team data: {e}")
-        print("Please ensure Get_Data.py has been run to populate the database.")
         return
 
     # Handle odds and games
@@ -509,80 +423,40 @@ def main():
             odds = SbrOddsProvider(sportsbook=args.odds).get_odds()
             games = create_todays_games_from_odds(odds)
             if len(games) == 0:
-                print("No games found from odds provider.")
                 return
             if (games[0][0] + ':' + games[0][1]) not in list(odds.keys()):
-                print(games[0][0] + ':' + games[0][1])
-                print(Fore.RED,"--------------Games list not up to date for todays games!!! Scraping disabled until list is updated.--------------")
-                print(Style.RESET_ALL)
                 odds = None
-            else:
-                print(f"------------------{args.odds} odds data------------------")
-                for g in odds.keys():
-                    home_team, away_team = g.split(":")
-                    print(f"{away_team} ({odds[g][away_team]['money_line_odds']}) @ {home_team} ({odds[g][home_team]['money_line_odds']})")
         except Exception as e:
-            print(f"Error loading odds: {e}")
             odds = None
     else:
         try:
-            print("Attempting to fetch today's games from ESPN API...")
             # Format the URL with today's date
             today = datetime.now().strftime('%Y%m%d')
             formatted_url = todays_games_url.format(today=today)
-            print(f"Using URL: {formatted_url}")
             data = get_todays_games_json(formatted_url)
             games = create_todays_games(data)
             
             if not games:
-                print("No games found from ESPN API. This could mean:")
-                print("1. No games scheduled for today")
-                print("2. ESPN API is temporarily unavailable")
-                print("3. Network connectivity issues")
-                print("\nTo continue with predictions, please:")
-                print("- Use the -odds parameter to fetch games from a sportsbook")
-                print("- Or manually input game data when prompted")
-                print("\nExample: python main.py -xgb -odds fanduel")
                 return
-            else:
-                print(f"Successfully loaded {len(games)} games from ESPN API")
                 
         except Exception as e:
-            print(f"Error loading today's games: {e}")
-            print("\nESPN API connection failed. This could be due to:")
-            print("1. Network connectivity issues")
-            print("2. ESPN API being temporarily unavailable")
-            print("3. DNS resolution problems")
-            print("\nTo continue with predictions, please:")
-            print("- Use the -odds parameter to fetch games from a sportsbook")
-            print("- Or manually input game data when prompted")
-            print("\nExample: python main.py -xgb -odds fanduel")
             return
 
     # Create today's games data
     result = createTodaysGames(games, team_df, odds, uo_model, spread_model)
     if result[0] is None:
-        print("Failed to create games data. Exiting.")
         return
     
     data, todays_games_uo, todays_games_spread, frame_ml, home_team_odds, away_team_odds = result
     if args.nn:
-        print("------------Neural Network Model Predictions-----------")
         data = tf.keras.utils.normalize(data, axis=1)
         NN_Runner.nn_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team_odds, args.kc)
-        print("-------------------------------------------------------")
     if args.xgb:
-        print("---------------XGBoost Model Predictions---------------")
         XGBoost_Runner.xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home_team_odds, away_team_odds, args.kc)
-        print("-------------------------------------------------------")
     if args.A:
-        print("---------------XGBoost Model Predictions---------------")
         XGBoost_Runner.xgb_runner(data, todays_games_uo, todays_games_spread, frame_ml, games, home_team_odds, away_team_odds, args.kc)
-        print("-------------------------------------------------------")
         data = tf.keras.utils.normalize(data, axis=1)
-        print("------------Neural Network Model Predictions-----------")
         NN_Runner.nn_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team_odds, args.kc)
-        print("-------------------------------------------------------")
 
 
 if __name__ == "__main__":

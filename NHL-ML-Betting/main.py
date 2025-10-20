@@ -701,16 +701,17 @@ def main():
         print("No games available. Exiting.")
         return
     
-    # Filter for games that haven't started yet
-    current_time = datetime.now(TZ)
-    upcoming_games = schedule_df[schedule_df['status'].isin(['Scheduled', 'Pre-Game', 'In Progress - 1st'])]
+    # Use all games for today, regardless of status
+    print(f"Processing all {len(schedule_df)} games scheduled for today:")
+    for _, game in schedule_df.iterrows():
+        print(f"   {game['away']} @ {game['home']} - {game['start_local']} ({game['status']})")
     
-    if upcoming_games.empty:
-        print("No upcoming games found for today.")
+    if schedule_df.empty:
+        print("No games found for today.")
         return
     
     # Convert to games list format
-    games = [(row['home'], row['away']) for _, row in upcoming_games.iterrows()]
+    games = [(row['home'], row['away']) for _, row in schedule_df.iterrows()]
     
     # Load NHL team data
     print("Loading NHL team data...")

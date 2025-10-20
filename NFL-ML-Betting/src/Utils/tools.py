@@ -175,33 +175,32 @@ def to_data_frame(data):
 def create_todays_games(input_list):
     games = []
     for game in input_list:
-        # Check if game is scheduled (not completed or in progress)
+        # Process all games regardless of status
         status = game.get('status', {})
         status_type = status.get('type', {})
         status_name = status_type.get('name', '')
         
-        # Include scheduled games and games in progress
-        if status_name in ['STATUS_SCHEDULED', 'STATUS_IN_PROGRESS']:
-            competitions = game.get('competitions', [])
-            if competitions:
-                competitors = competitions[0].get('competitors', [])
-                if len(competitors) >= 2:
-                    # Get team information
-                    home_team_info = competitors[0].get('team', {})
-                    away_team_info = competitors[1].get('team', {})
-                    
-                    # Extract team names - try different possible fields
-                    home_team = (home_team_info.get('displayName', '') or 
-                               home_team_info.get('name', '') or 
-                               home_team_info.get('shortDisplayName', ''))
-                    
-                    away_team = (away_team_info.get('displayName', '') or 
-                               away_team_info.get('name', '') or 
-                               away_team_info.get('shortDisplayName', ''))
-                    
-                    if home_team and away_team:
-                        games.append([home_team, away_team])
-                        print(f"Found game: {away_team} @ {home_team} (Status: {status_name})")
+        # Include all games regardless of status (scheduled, in progress, completed, etc.)
+        competitions = game.get('competitions', [])
+        if competitions:
+            competitors = competitions[0].get('competitors', [])
+            if len(competitors) >= 2:
+                # Get team information
+                home_team_info = competitors[0].get('team', {})
+                away_team_info = competitors[1].get('team', {})
+                
+                # Extract team names - try different possible fields
+                home_team = (home_team_info.get('displayName', '') or 
+                           home_team_info.get('name', '') or 
+                           home_team_info.get('shortDisplayName', ''))
+                
+                away_team = (away_team_info.get('displayName', '') or 
+                           away_team_info.get('name', '') or 
+                           away_team_info.get('shortDisplayName', ''))
+                
+                if home_team and away_team:
+                    games.append([home_team, away_team])
+                    print(f"Found game: {away_team} @ {home_team} (Status: {status_name})")
     
     if not games:
         print("No games found for today")
