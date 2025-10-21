@@ -94,7 +94,21 @@ def nhl_data_to_dataframe(data):
     
     return df
 
-con = sqlite3.connect("../../Data/TeamData.sqlite")
+# Get the absolute path to the Data directory
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(current_dir, "..", "..", "Data")
+teams_db_path = os.path.join(data_dir, "TeamData.sqlite")
+
+# Check if database file exists
+if not os.path.exists(teams_db_path):
+    print(f"Error: TeamData.sqlite not found at {teams_db_path}")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Script location: {current_dir}")
+    print(f"Looking for database in: {data_dir}")
+    exit(1)
+
+con = sqlite3.connect(teams_db_path)
 
 for key, value in config['get-data'].items():
     # Extract season ID from the key (e.g., "2012-13" -> 20122013)

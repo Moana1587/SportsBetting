@@ -266,12 +266,19 @@ def prepare_nhl_prediction_data(games, team_df, custom_ou=None, custom_spread=No
             away_team_series.rename(index={col: f"{col}.1" for col in team_df.columns.values})
         ])
         
+        # Add NHL_SeasonId values for classification model compatibility
+        # Use current season ID (2025-26 season = 20252026)
+        current_season_id = 20252026
+        combined_stats['NHL_SeasonId'] = current_season_id
+        combined_stats['NHL_SeasonId.1'] = current_season_id
+        
         # Note: Days-Rest columns are not used in training, so we don't add them here
         
         match_data.append(combined_stats)
         
         # Use custom odds if provided, otherwise use defaults
-        todays_games_uo.append(custom_ou[i] if custom_ou and i < len(custom_ou) else 5.5)
+        # Updated default OU to be more realistic for current NHL games (typically 6.0-6.5)
+        todays_games_uo.append(custom_ou[i] if custom_ou and i < len(custom_ou) else 6.0)
         todays_games_spread.append(custom_spread[i] if custom_spread and i < len(custom_spread) else 1.5)
         home_team_odds.append(custom_home_odds[i] if custom_home_odds and i < len(custom_home_odds) else -110)
         away_team_odds.append(custom_away_odds[i] if custom_away_odds and i < len(custom_away_odds) else -110)
@@ -284,7 +291,7 @@ def prepare_nhl_prediction_data(games, team_df, custom_ou=None, custom_spread=No
     games_data_frame = pd.concat(match_data, ignore_index=True, axis=1)
     games_data_frame = games_data_frame.T
     
-    # Remove non-predictive columns - match exactly what the training data does
+    # Remove non-predictive columns - but keep NHL_SeasonId for classification model
     columns_to_drop = [
         'Score',           # Game outcome - not predictive
         'Home-Score',      # Used to calculate target - not predictive
@@ -297,8 +304,7 @@ def prepare_nhl_prediction_data(games, team_df, custom_ou=None, custom_spread=No
         'teamFullName.1',  # Away team name - not predictive
         'Season',          # Season - not predictive for individual games
         'Season.1',        # Season - not predictive for individual games
-        'NHL_SeasonId',    # Season ID - not predictive
-        'NHL_SeasonId.1',  # Season ID - not predictive
+        # Note: Keeping NHL_SeasonId and NHL_SeasonId.1 for classification model compatibility
         'teamId',          # Team ID - not predictive
         'teamId.1',        # Team ID - not predictive
     ]
@@ -423,8 +429,27 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
                     ml_winner = "Unknown"
                     ml_confidence = 0.0
                 
-                # Determine OU prediction
-                if ou_prediction is not None:
+                # Determine OU prediction using classification model
+                ou_pick = "Unknown"
+                ou_confidence = 0.0
+                ou_value = todays_games_uo[i] if i < len(todays_games_uo) else 6.0
+                ou_value_confidence = 50.0
+                
+                # Try to get OU classification prediction first
+                if 'ou_classification_predictions' in prediction_results and i < len(prediction_results['ou_classification_predictions']):
+                    ou_class_pred = prediction_results['ou_classification_predictions'][i]
+                    ou_class_confidence = prediction_results.get('ou_classification_confidence', [])[i] if i < len(prediction_results.get('ou_classification_confidence', [])) else 50.0
+                    
+                    # Classification model: 0 = UNDER, 1 = OVER
+                    ou_pick = "OVER" if ou_class_pred == 1 else "UNDER"
+                    ou_confidence = round(ou_class_confidence, 1)
+                    
+                    # Get OU value prediction for display
+                    ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 6.0)
+                    ou_value_confidence = prediction_results.get('ou_confidence', [])[i] if i < len(prediction_results.get('ou_confidence', [])) else 50.0
+                
+                # Fallback to old regression method if classification not available
+                elif ou_prediction is not None:
                     ou_pred = ou_prediction
                     # Handle array conversion - the prediction is a numpy array from XGBoost
                     if hasattr(ou_pred, '__len__') and len(ou_pred) > 0:
@@ -433,19 +458,16 @@ def export_predictions_to_csv(games, prediction_results, todays_games_uo, todays
                         ou_pred = float(ou_pred)
                     
                     # Get OU value and confidence - use predicted value if available, otherwise use default
-                    ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5)
+                    ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 6.0)
                     ou_value_confidence = prediction_results.get('ou_confidence', [])[i] if i < len(prediction_results.get('ou_confidence', [])) else 50.0
                     
-                    # Determine if prediction is over or under
+                    # Determine if prediction is over or under using the predicted OU value as the line
                     if ou_pred > ou_value:
                         ou_pick = "OVER"
                         ou_confidence = round(abs(ou_pred - ou_value) / ou_value * 100, 1)
                     else:
                         ou_pick = "UNDER"
                         ou_confidence = round(abs(ou_pred - ou_value) / ou_value * 100, 1)
-                else:
-                    ou_pick = "Unknown"
-                    ou_confidence = 0.0
                 
                 # Determine spread prediction
                 if spread_prediction is not None:
@@ -544,7 +566,7 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
         for i, (home_team, away_team) in enumerate(games):
             if i < len(todays_games_uo):
                 # Get OU value and confidence - use predicted value if available, otherwise use default
-                ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 5.5)
+                ou_value = prediction_results.get('ou_value_predictions', [])[i] if i < len(prediction_results.get('ou_value_predictions', [])) else (todays_games_uo[i] if i < len(todays_games_uo) else 6.0)
                 ou_value_confidence = prediction_results.get('ou_confidence', [])[i] if i < len(prediction_results.get('ou_confidence', [])) else 50.0
                 
                 # Get ML prediction to determine winning team
@@ -568,12 +590,21 @@ def export_predictions_to_txt(games, prediction_results, todays_games_uo, todays
                             ml_winner = home_team if winner == 1 else away_team
                             ml_confidence = round(ml_pred[2] if winner == 1 else (1 - ml_pred[2]), 3)
                 
-                # Get OU prediction from XGBoost_Runner output
+                # Get OU prediction using classification model
                 ou_pick = "OVER"  # Default
                 ou_confidence = 50.0  # Default
                 
-                # Try to get OU prediction from the results
-                if 'ou_predictions' in prediction_results and i < len(prediction_results['ou_predictions']):
+                # Try to get OU classification prediction first
+                if 'ou_classification_predictions' in prediction_results and i < len(prediction_results['ou_classification_predictions']):
+                    ou_class_pred = prediction_results['ou_classification_predictions'][i]
+                    ou_class_confidence = prediction_results.get('ou_classification_confidence', [])[i] if i < len(prediction_results.get('ou_classification_confidence', [])) else 50.0
+                    
+                    # Classification model: 0 = UNDER, 1 = OVER
+                    ou_pick = "OVER" if ou_class_pred == 1 else "UNDER"
+                    ou_confidence = round(ou_class_confidence, 1)
+                
+                # Fallback to old regression method if classification not available
+                elif 'ou_predictions' in prediction_results and i < len(prediction_results['ou_predictions']):
                     ou_pred = prediction_results['ou_predictions'][i]
                     # Handle array conversion - the prediction is a numpy array from XGBoost
                     if hasattr(ou_pred, '__len__') and len(ou_pred) > 0:

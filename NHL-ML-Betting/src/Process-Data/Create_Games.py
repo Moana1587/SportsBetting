@@ -28,8 +28,28 @@ ml_home_odds = []
 ml_away_odds = []
 
 # Connect to databases
-teams_con = sqlite3.connect("../../Data/TeamData.sqlite")
-odds_con = sqlite3.connect("../../Data/OddsData.sqlite")
+import os
+
+# Get the absolute path to the Data directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(current_dir, "..", "..", "Data")
+teams_db_path = os.path.join(data_dir, "TeamData.sqlite")
+odds_db_path = os.path.join(data_dir, "OddsData.sqlite")
+
+# Check if database files exist
+if not os.path.exists(teams_db_path):
+    print(f"Error: TeamData.sqlite not found at {teams_db_path}")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Script location: {current_dir}")
+    print(f"Looking for database in: {data_dir}")
+    exit(1)
+
+if not os.path.exists(odds_db_path):
+    print(f"Error: OddsData.sqlite not found at {odds_db_path}")
+    exit(1)
+
+teams_con = sqlite3.connect(teams_db_path)
+odds_con = sqlite3.connect(odds_db_path)
 
 def process_season_games(season_key):
     """Process games for a specific season"""
@@ -253,7 +273,8 @@ if games:
             continue
     
     # Save to database
-    con = sqlite3.connect("../../Data/dataset.sqlite")
+    dataset_db_path = os.path.join(data_dir, "dataset.sqlite")
+    con = sqlite3.connect(dataset_db_path)
     season.to_sql("dataset_2012-24_new", con, if_exists="replace", index=False)
     con.close()
     

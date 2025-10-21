@@ -10,7 +10,21 @@ def get_date(date_string):
     year = year1 if int(month) > 8 else int(year1) + 1
     return datetime.strptime(f"{year}-{month}-{day}", '%Y-%m-%d')
 
-con = sqlite3.connect("../../Data/OddsData.sqlite")
+# Get the absolute path to the Data directory
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(current_dir, "..", "..", "Data")
+odds_db_path = os.path.join(data_dir, "OddsData.sqlite")
+
+# Check if database file exists
+if not os.path.exists(odds_db_path):
+    print(f"Error: OddsData.sqlite not found at {odds_db_path}")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Script location: {current_dir}")
+    print(f"Looking for database in: {data_dir}")
+    exit(1)
+
+con = sqlite3.connect(odds_db_path)
 datasets = ["odds_2022-23", "odds_2021-22", "odds_2020-21", "odds_2019-20", "odds_2018-19", "odds_2017-18", "odds_2016-17", "odds_2015-16", "odds_2014-15", "odds_2013-14", "odds_2012-13", "odds_2011-12", "odds_2010-11", "odds_2009-10", "odds_2008-09", "odds_2007-08"]
 for dataset in tqdm(datasets):
     data = pd.read_sql_query(f"select * from \"{dataset}\"", con, index_col="index")

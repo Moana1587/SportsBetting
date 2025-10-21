@@ -149,6 +149,50 @@ def load_ou_value_model():
         print("No OU Value models found.")
         return None, 0, []
 
+def load_ou_classification_model():
+    """Load the OU classification model and ensemble for OVER/UNDER prediction"""
+    models_dir = "Models"
+    ensemble_dir = "Models/Ensemble_OU_Classification"
+    
+    # Try to find the best OU Classification model
+    ou_classification_models = [f for f in os.listdir(models_dir) if f.startswith("XGBoost_") and f.endswith("_OU_Classification.json")]
+    if ou_classification_models:
+        # Sort by accuracy and get the best one
+        ou_classification_models.sort(key=lambda x: float(x.split('_')[1].replace('%', '')), reverse=True)
+        best_ou_classification_model = os.path.join(models_dir, ou_classification_models[0])
+        best_ou_classification_accuracy = float(ou_classification_models[0].split('_')[1].replace('%', ''))
+        
+        print(f"Found {len(ou_classification_models)} OU Classification models:")
+        for i, model in enumerate(ou_classification_models[:3]):  # Show top 3
+            acc = float(model.split('_')[1].replace('%', ''))
+            marker = "BEST" if i == 0 else "   "
+            print(f"   {marker} {model} ({acc}%)")
+        
+        # Load the main model using XGBClassifier
+        model = xgb.XGBClassifier()
+        model.load_model(best_ou_classification_model)
+        print(f"Loaded BEST OU Classification model: {ou_classification_models[0]} ({best_ou_classification_accuracy}%)")
+        
+        # Load ensemble models for confidence estimation
+        ensemble_models = []
+        if os.path.exists(ensemble_dir):
+            ensemble_files = [f for f in os.listdir(ensemble_dir) if f.startswith("ensemble_ou_classification_") and f.endswith(".json")]
+            ensemble_files.sort(key=lambda x: int(x.split('_')[3].split('.')[0]))
+            
+            for ensemble_file in ensemble_files:
+                ensemble_model = xgb.XGBClassifier()
+                ensemble_model.load_model(os.path.join(ensemble_dir, ensemble_file))
+                ensemble_models.append(ensemble_model)
+            
+            print(f"Loaded {len(ensemble_models)} ensemble classification models for confidence estimation")
+        else:
+            print("No ensemble classification models found. Confidence estimation will use simplified method.")
+        
+        return model, best_ou_classification_accuracy, ensemble_models
+    else:
+        print("No OU Classification models found.")
+        return None, 0, []
+
 # Initialize models as None - will be loaded when needed
 models = None
 
@@ -209,6 +253,37 @@ def predict_ou_with_confidence(model, ensemble_models, features):
     
     return main_prediction, confidence_percentage
 
+def predict_ou_classification_with_confidence(model, ensemble_models, features):
+    """Make OVER/UNDER classification predictions with confidence using ensemble method"""
+    if not ensemble_models:
+        # Fallback: use simple confidence based on prediction probability
+        predictions = model.predict(features)
+        probabilities = model.predict_proba(features)[:, 1]  # Probability of OVER
+        # Convert probabilities to confidence (closer to 0.5 = lower confidence)
+        confidence = np.abs(probabilities - 0.5) * 200  # Scale to 0-100%
+        return predictions, probabilities, confidence
+    
+    # Get prediction from main model
+    main_predictions = model.predict(features)
+    main_probabilities = model.predict_proba(features)[:, 1]
+    
+    # Get predictions from ensemble
+    ensemble_probabilities = []
+    for ensemble_model in ensemble_models:
+        prob = ensemble_model.predict_proba(features)[:, 1]
+        ensemble_probabilities.append(prob)
+    
+    # Calculate confidence based on prediction variance
+    ensemble_probabilities = np.array(ensemble_probabilities)
+    prediction_std = np.std(ensemble_probabilities, axis=0)
+    
+    # Calculate confidence percentage (higher confidence = lower variance)
+    # Normalize to 0-100% range
+    max_std = np.max(prediction_std) if len(prediction_std) > 0 else 1.0
+    confidence_percentage = np.clip((1 - prediction_std / max_std) * 100, 0, 100)
+    
+    return main_predictions, main_probabilities, confidence_percentage
+
 def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team_odds, kelly_criterion, todays_games_spread=None):
     """Run XGBoost predictions on game data"""
     global models
@@ -229,32 +304,30 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     ou_predictions_array = []
     spread_predictions_array = []
 
-    # Make ML predictions - data is now a DataFrame with proper column names
-    print(f"Making ML predictions on {len(data)} games...")
-    for i in range(len(data)):
-        row_data = data.iloc[i:i+1]  # Get single row as DataFrame
+    # Create filtered data for ML/UO/Spread models (without NHL_SeasonId columns)
+    frame_ml_filtered = data.drop(columns=['NHL_SeasonId', 'NHL_SeasonId.1'], errors='ignore')
+    
+    # Make ML predictions - use filtered data without NHL_SeasonId columns
+    print(f"Making ML predictions on {len(frame_ml_filtered)} games...")
+    for i in range(len(frame_ml_filtered)):
+        row_data = frame_ml_filtered.iloc[i:i+1]  # Get single row as DataFrame
         ml_predictions_array.append(models['ml'].predict(xgb.DMatrix(row_data)))
 
-    # Prepare UO data - UO model uses same features as ML model (no OU column)
-    frame_uo = copy.deepcopy(frame_ml)
-    
     # UO model uses the same features as ML model (team statistics only)
-    # No need to reorder columns since frame_uo is a copy of frame_ml
-    print(f"Making UO predictions on {len(frame_uo)} games...")
+    print(f"Making UO predictions on {len(frame_ml_filtered)} games...")
 
     # Make UO predictions with confidence
-    for i in range(len(frame_uo)):
-        row_data = frame_uo.iloc[i:i+1]  # Get single row as DataFrame
+    for i in range(len(frame_ml_filtered)):
+        row_data = frame_ml_filtered.iloc[i:i+1]  # Get single row as DataFrame
         ou_pred = models['uo'].predict(xgb.DMatrix(row_data))
         ou_predictions_array.append(ou_pred)
     
     # Make Spread predictions (if spread data provided)
     if todays_games_spread is not None and 'spread' in models:
-        frame_spread = copy.deepcopy(frame_ml)  # Use the same features as ML model
-        print(f"Making Spread predictions on {len(frame_spread)} games...")
+        print(f"Making Spread predictions on {len(frame_ml_filtered)} games...")
         
-        for i in range(len(frame_spread)):
-            row_data = frame_spread.iloc[i:i+1]  # Get single row as DataFrame
+        for i in range(len(frame_ml_filtered)):
+            row_data = frame_ml_filtered.iloc[i:i+1]  # Get single row as DataFrame
             spread_predictions_array.append(models['spread'].predict(xgb.DMatrix(row_data)))
     
     # Make OU Value predictions with confidence
@@ -262,10 +335,10 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     ou_confidence_array = []
     ou_value_model, ou_value_r2, ensemble_models = load_ou_value_model()
     if ou_value_model is not None:
-        print(f"Making OU Value predictions with confidence on {len(frame_ml)} games...")
+        print(f"Making OU Value predictions with confidence on {len(frame_ml_filtered)} games...")
         
         # Predict all games at once for efficiency
-        ou_value_predictions, ou_confidence = predict_ou_with_confidence(ou_value_model, ensemble_models, frame_ml)
+        ou_value_predictions, ou_confidence = predict_ou_with_confidence(ou_value_model, ensemble_models, frame_ml_filtered)
         
         # Convert to lists
         ou_value_predictions_array = ou_value_predictions.tolist()
@@ -274,8 +347,32 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
         print(f"OU Value predictions completed. Average confidence: {np.mean(ou_confidence):.1f}%")
     else:
         print("No OU Value model available, using default OU values")
-        ou_value_predictions_array = [5.5] * len(frame_ml)  # Default OU value
-        ou_confidence_array = [50.0] * len(frame_ml)  # Default confidence
+        ou_value_predictions_array = [6.0] * len(frame_ml_filtered)  # Default OU value
+        ou_confidence_array = [50.0] * len(frame_ml_filtered)  # Default confidence
+
+    # Make OU Classification predictions (OVER/UNDER)
+    ou_classification_predictions_array = []
+    ou_classification_probabilities_array = []
+    ou_classification_confidence_array = []
+    ou_classification_model, ou_classification_accuracy, ou_classification_ensemble = load_ou_classification_model()
+    if ou_classification_model is not None:
+        print(f"Making OU Classification predictions on {len(data)} games...")
+        
+        # Use the full data (with NHL_SeasonId columns) for classification model
+        ou_class_predictions, ou_class_probabilities, ou_class_confidence = predict_ou_classification_with_confidence(
+            ou_classification_model, ou_classification_ensemble, data)
+        
+        # Convert to lists
+        ou_classification_predictions_array = ou_class_predictions.tolist()
+        ou_classification_probabilities_array = ou_class_probabilities.tolist()
+        ou_classification_confidence_array = ou_class_confidence.tolist()
+        
+        print(f"OU Classification predictions completed. Average confidence: {np.mean(ou_class_confidence):.1f}%")
+    else:
+        print("No OU Classification model available, using default predictions")
+        ou_classification_predictions_array = [0] * len(data)  # Default to UNDER
+        ou_classification_probabilities_array = [0.5] * len(data)  # Default probability
+        ou_classification_confidence_array = [50.0] * len(data)  # Default confidence
 
     # Debug: Print array lengths
     print(f"\nDebug: Prediction array lengths:")
@@ -331,11 +428,16 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
             else:
                 ou_pred = float(ou_pred)  # Convert to float if it's a scalar
             
-            actual_ou = todays_games_uo[count]
-            # Ensure actual_ou is also a scalar
-            actual_ou = float(actual_ou)
-            under_over = 0 if ou_pred < actual_ou else 1  # 0=Under, 1=Over
-            un_confidence = round(abs(ou_pred - actual_ou) / actual_ou, 3)  # Relative difference as confidence
+            # Use the classification model prediction for OVER/UNDER
+            if count < len(ou_classification_predictions_array):
+                under_over = ou_classification_predictions_array[count]  # 0=Under, 1=Over
+                un_confidence = ou_classification_confidence_array[count] / 100.0  # Convert to 0-1 range
+            else:
+                # Fallback to regression comparison if classification model not available
+                ou_line = ou_value_predictions_array[count] if count < len(ou_value_predictions_array) else todays_games_uo[count]
+                ou_line = float(ou_line)
+                under_over = 0 if ou_pred < ou_line else 1  # 0=Under, 1=Over
+                un_confidence = round(abs(ou_pred - ou_line) / ou_line, 3)  # Relative difference as confidence
         
             # Get spread prediction if available (single regression value)
             spread_value = None
@@ -359,8 +461,8 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
             un_confidence_pct = round(un_confidence * 100, 1)
             
             # Get OU value prediction and confidence
-            ou_value_pred = ou_value_predictions_array[count] if count < len(ou_value_predictions_array) else actual_ou
-            ou_conf = ou_confidence_array[count] if count < len(ou_confidence_array) else 50.0
+            ou_value_pred = ou_value_predictions_array[count] if count < len(ou_value_predictions_array) else 6.0
+            ou_conf = ou_classification_confidence_array[count] if count < len(ou_classification_confidence_array) else 50.0
             
             # Combine OU pick and value into single display
             ou_pick_text = "UNDER" if under_over == 0 else "OVER"
@@ -494,17 +596,23 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
         else:
             ou_pred = float(ou_pred)  # Convert to float if it's a scalar
         
-        actual_ou = todays_games_uo[count]
-        # Ensure actual_ou is also a scalar
-        actual_ou = float(actual_ou)
-        under_over = 0 if ou_pred < actual_ou else 1  # 0=Under, 1=Over
-        un_confidence = round(abs(ou_pred - actual_ou) / actual_ou * 100, 1)
+        # Use the classification model prediction for OVER/UNDER
+        if count < len(ou_classification_predictions_array):
+            under_over = ou_classification_predictions_array[count]  # 0=Under, 1=Over
+            un_confidence = ou_classification_confidence_array[count]  # Already in percentage
+        else:
+            # Fallback to regression comparison if classification model not available
+            ou_line = ou_value_predictions_array[count] if count < len(ou_value_predictions_array) else todays_games_uo[count]
+            ou_line = float(ou_line)
+            under_over = 0 if ou_pred < ou_line else 1  # 0=Under, 1=Over
+            un_confidence = round(abs(ou_pred - ou_line) / ou_line * 100, 1)
+        
         ou_pick = "OVER" if under_over == 1 else "UNDER"
-        ou_value = actual_ou
+        ou_value = ou_value_predictions_array[count] if count < len(ou_value_predictions_array) else 6.0
         
         # Get OU value prediction and confidence
-        ou_value_pred = ou_value_predictions_array[count] if count < len(ou_value_predictions_array) else actual_ou
-        ou_conf = ou_confidence_array[count] if count < len(ou_confidence_array) else 50.0
+        ou_value_pred = ou_value_predictions_array[count] if count < len(ou_value_predictions_array) else 6.0
+        ou_conf = ou_classification_confidence_array[count] if count < len(ou_classification_confidence_array) else 50.0
         
         # Spread recommendation
         spread_pick = ""
@@ -549,5 +657,8 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
         'ou_predictions': ou_predictions_array,
         'spread_predictions': spread_predictions_array,
         'ou_value_predictions': ou_value_predictions_array,
-        'ou_confidence': ou_confidence_array
+        'ou_confidence': ou_confidence_array,
+        'ou_classification_predictions': ou_classification_predictions_array,
+        'ou_classification_probabilities': ou_classification_probabilities_array,
+        'ou_classification_confidence': ou_classification_confidence_array
     }
