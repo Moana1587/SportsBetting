@@ -1,56 +1,170 @@
 import argparse
 from datetime import datetime, timedelta
 import requests
+import time
+import toml
 
 import pandas as pd
 import tensorflow as tf
 from colorama import Fore, Style
+from nba_api.stats.endpoints import leaguedashteamstats
 
 from src.DataProviders.SbrOddsProvider import SbrOddsProvider
 from src.Predict import NN_Runner, XGBoost_Runner
 from src.Utils.Dictionaries import team_index_current
 from src.Utils.tools import create_todays_games_from_odds, get_json_data, to_data_frame, get_todays_games_json, create_todays_games
 
+def load_config():
+    """Load configuration from config.toml file"""
+    try:
+        with open('config.toml', 'r') as f:
+            config = toml.load(f)
+        return config
+    except FileNotFoundError:
+        print("Warning: config.toml not found. Using default configuration.")
+        return {}
+    except Exception as e:
+        print(f"Warning: Error loading config.toml: {e}. Using default configuration.")
+        return {}
+
+def get_api_params(config):
+    """Get API parameters from config or use defaults"""
+    # Default parameters
+    default_params = {
+        "Season": "2024-25",
+        "SeasonType": "Regular Season",
+        "PerMode": "PerGame",
+        "MeasureType": "Base",
+        "LeagueID": "00"
+    }
+    
+    # Check if config has API parameters
+    if 'api_params' in config:
+        # Merge config params with defaults
+        params = default_params.copy()
+        params.update(config['api_params'])
+        return params
+    
+    return default_params
+
+def get_team_stats_nba_api(config, max_retries=3, delay=2):
+    """
+    Fetch team statistics using the nba_api library with retry logic.
+    
+    Args:
+        config (dict): Configuration dictionary
+        max_retries (int): Maximum number of retry attempts
+        delay (int): Delay between retries in seconds
+    
+    Returns:
+        pandas.DataFrame: Team statistics DataFrame or empty DataFrame if all retries fail
+    """
+    # Get API parameters from config
+    api_params = get_api_params(config)
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Attempting to fetch team stats using nba_api (attempt {attempt + 1}/{max_retries})...")
+            
+            # Use nba_api to get team stats
+            teams = leaguedashteamstats.LeagueDashTeamStats(
+                season=api_params.get('Season', '2024-25'),
+                season_type_all_star=api_params.get('SeasonType', 'Regular Season'),
+                per_mode_detailed=api_params.get('PerMode', 'PerGame'),
+                measure_type_detailed_defense=api_params.get('MeasureType', 'Base')
+            )
+            
+            # Get the DataFrame from the API response
+            df = teams.get_data_frames()[0]
+            
+            print(f"Successfully fetched team stats using nba_api: {len(df)} teams")
+            return df
+            
+        except Exception as e:
+            print(f"Error fetching team stats on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                print("All attempts failed for nba_api.")
+                return pd.DataFrame()
+    
+    return pd.DataFrame()
+
 def get_todays_nba_games():
-    """Fetch today's NBA games from ESPN API"""
+    """Fetch today's NBA games from ESPN API with retry logic"""
     today = datetime.now().strftime('%Y%m%d')
     espn_games_url = f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={today}'
     
-    try:
-        response = requests.get(espn_games_url)
-        response.raise_for_status()
-        data = response.json()
-        
-        games = []
-        if 'events' in data:
-            for event in data['events']:
-                # Extract team information from competitors
-                home_team = None
-                away_team = None
+    max_retries = 3
+    delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Attempting to fetch NBA games from ESPN API (attempt {attempt + 1}/{max_retries})...")
+            response = requests.get(espn_games_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            games = []
+            if 'events' in data:
+                for event in data['events']:
+                    # Extract team information from competitors
+                    home_team = None
+                    away_team = None
+                    
+                    for competitor in event.get('competitions', [{}])[0].get('competitors', []):
+                        if competitor.get('homeAway') == 'home':
+                            home_team = competitor['team']['displayName']
+                        elif competitor.get('homeAway') == 'away':
+                            away_team = competitor['team']['displayName']
+                    
+                    if home_team and away_team:
+                        games.append([home_team, away_team])
+            
+            print(f"Successfully fetched {len(games)} NBA games from ESPN API")
+            return games
+            
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                print("All connection attempts failed for ESPN API.")
+                return []
                 
-                for competitor in event.get('competitions', [{}])[0].get('competitors', []):
-                    if competitor.get('homeAway') == 'home':
-                        home_team = competitor['team']['displayName']
-                    elif competitor.get('homeAway') == 'away':
-                        away_team = competitor['team']['displayName']
+        except requests.exceptions.Timeout as e:
+            print(f"Timeout error on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                print("All timeout attempts failed for ESPN API.")
+                return []
                 
-                if home_team and away_team:
-                    games.append([home_team, away_team])
-        
-        return games
-    except Exception as e:
-        print(f"Error fetching NBA games from ESPN API: {e}")
-        return []
+        except Exception as e:
+            print(f"Error fetching NBA games from ESPN API on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                print("All attempts failed for ESPN API.")
+                return []
+    
+    return []
 
 todays_games_url = 'http://data.nba.net/v2015/json/mobile_teams/nba/2025/scores/00_todays_scores.json'#'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2024/scores/00_todays_scores.json'
-data_url = 'https://stats.nba.com/stats/leaguedashteamstats?' \
-           'Conference=&DateFrom=&DateTo=&Division=&GameScope=&' \
-           'GameSegment=&LastNGames=0&LeagueID=00&Location=&' \
-           'MeasureType=Base&Month=0&OpponentTeamID=0&Outcome=&' \
-           'PORound=0&PaceAdjust=N&PerMode=PerGame&Period=0&' \
-           'PlayerExperience=&PlayerPosition=&PlusMinus=N&Rank=N&' \
-           'Season=2024-25&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&' \
-           'StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision='
+
+# Load configuration
+config = load_config()
+
+# Use modern NBA API approach with parameters
+print("Using modern NBA API approach with parameters")
 
 
 def createTodaysGames(games, df, odds):
@@ -75,10 +189,11 @@ def createTodaysGames(games, df, odds):
             away_team_odds.append(game_odds[away_team]['money_line_odds'])
 
         else:
-            todays_games_uo.append(input(home_team + ' vs ' + away_team + ': '))
-
-            home_team_odds.append(input(home_team + ' odds: '))
-            away_team_odds.append(input(away_team + ' odds: '))
+            # Use default values when no odds are provided and running non-interactively
+            print(f"No odds provided for {home_team} vs {away_team}. Using default values.")
+            todays_games_uo.append(220.0)  # Default over/under line
+            home_team_odds.append(-110)    # Default home team odds
+            away_team_odds.append(-110)    # Default away team odds
 
         # calculate days rest for both teams
         schedule_df = pd.read_csv('Data/nba-2024-UTC.csv', parse_dates=['Date'], date_format='%d/%m/%Y %H:%M')
@@ -140,8 +255,52 @@ def main():
         if len(games) == 0:
             print("No NBA games found for today.")
             return
-    data = get_json_data(data_url)
-    df = to_data_frame(data)
+    # Get team statistics using nba_api
+    print("Fetching team statistics using nba_api...")
+    df = get_team_stats_nba_api(config)
+    
+    if df.empty:
+        print("Failed to fetch NBA team statistics data from nba_api.")
+        print("Attempting to use cached data if available...")
+        
+        # Try to load from a cached file if API fails
+        try:
+            import os
+            import pickle
+            cache_file = "Data/cached_team_stats.pkl"
+            if os.path.exists(cache_file):
+                print(f"Loading cached team statistics from {cache_file}")
+                with open(cache_file, 'rb') as f:
+                    df = pickle.load(f)
+                if not df.empty:
+                    print("Successfully loaded cached team statistics data.")
+                else:
+                    print("Cached data is empty or invalid.")
+                    return
+            else:
+                print("No cached data available. Cannot proceed with predictions.")
+                return
+        except Exception as e:
+            print(f"Error loading cached data: {e}")
+            print("Cannot proceed with predictions.")
+            return
+    else:
+        # Cache the successfully fetched data
+        try:
+            import os
+            import pickle
+            os.makedirs("Data", exist_ok=True)
+            cache_file = "Data/cached_team_stats.pkl"
+            with open(cache_file, 'wb') as f:
+                pickle.dump(df, f)
+            print(f"Team statistics data cached to {cache_file}")
+        except Exception as e:
+            print(f"Warning: Could not cache data: {e}")
+    
+    if df.empty:
+        print("No team statistics data available. Cannot proceed with predictions.")
+        return
+        
     data, todays_games_uo, frame_ml, home_team_odds, away_team_odds = createTodaysGames(games, df, odds)
     if args.nn:
         print("------------Neural Network Model Predictions-----------")

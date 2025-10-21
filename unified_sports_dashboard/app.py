@@ -665,36 +665,77 @@ def fetch_nba_predictions(ttl_hash=None):
         return {}
 
 def parse_nba_predictions(stdout):
-    """Parse NBA predictions from main.py output"""
+    """Parse NBA predictions from main.py output with new format"""
     games = {}
     
     # Check if there are no games in the output
     if "No games found" in stdout or "No games available" in stdout:
         return {}
     
-    data_re = re.compile(r'\n(?P<home_team>[\w ]+)(\((?P<home_confidence>[\d+\.]+)%\))? vs (?P<away_team>[\w ]+)(\((?P<away_confidence>[\d+\.]+)%\))?: (?P<ou_pick>OVER|UNDER) (?P<ou_value>[\d+\.]+) (\((?P<ou_confidence>[\d+\.]+)%\))?', re.MULTILINE)
-    ev_re = re.compile(r'(?P<team>[\w ]+) EV: (?P<ev>[-\d+\.]+)', re.MULTILINE)
-    odds_re = re.compile(r'(?P<away_team>[\w ]+) \((?P<away_team_odds>-?\d+)\) @ (?P<home_team>[\w ]+) \((?P<home_team_odds>-?\d+)\)', re.MULTILINE)
+    # New regex pattern to match the updated format:
+    # "Oklahoma City Thunder vs Houston Rockets, recommended bet: Oklahoma City Thunder, Spread:+6.2(36.4%), ML:-175(63.6%), OU:OVER 220.0(47.6%)"
+    prediction_re = re.compile(
+        r'(?P<home_team>[\w ]+) vs (?P<away_team>[\w ]+), recommended bet: (?P<recommended_team>[\w ]+)(?:, )?(?P<bet_details>.*?)(?:\n|$)',
+        re.MULTILINE
+    )
     
-    for match in data_re.finditer(stdout):
-        away_team = match.group('away_team').strip()
+    # Regex patterns for individual bet components
+    spread_re = re.compile(r'Spread:([+-]?[\d+\.]+)\(([\d+\.]+)%\)')
+    ml_re = re.compile(r'ML:(-?\d+)\(([\d+\.]+)%\)')
+    ou_re = re.compile(r'OU:(OVER|UNDER) ([\d+\.]+)\(([\d+\.]+)%\)')
+    
+    # EV data extraction
+    ev_re = re.compile(r'(?P<team>[\w ]+) EV: (?P<ev>[-\d+\.]+)', re.MULTILINE)
+    
+    for match in prediction_re.finditer(stdout):
         home_team = match.group('home_team').strip()
+        away_team = match.group('away_team').strip()
+        recommended_team = match.group('recommended_team').strip()
+        bet_details = match.group('bet_details').strip()
+        
         game_key = f"{away_team}:{home_team}"
         
+        # Initialize game dictionary
         game_dict = {
             'away_team': away_team,
             'home_team': home_team,
-            'away_confidence': match.group('away_confidence'),
-            'home_confidence': match.group('home_confidence'),
-            'ou_pick': match.group('ou_pick'),
-            'ou_value': match.group('ou_value'),
-            'ou_confidence': match.group('ou_confidence'),
+            'recommended_team': recommended_team,
             'away_team_ev': None,
             'home_team_ev': None,
             'away_team_odds': '100',
             'home_team_odds': '100',
-            'sport': 'NBA'
+            'sport': 'NBA',
+            'spread_value': None,
+            'spread_confidence': None,
+            'ml_odds': None,
+            'ml_confidence': None,
+            'ou_pick': None,
+            'ou_value': None,
+            'ou_confidence': None,
+            'all_recommendations': []
         }
+        
+        # Parse spread information
+        spread_match = spread_re.search(bet_details)
+        if spread_match:
+            game_dict['spread_value'] = spread_match.group(1)
+            game_dict['spread_confidence'] = spread_match.group(2)
+            game_dict['all_recommendations'].append(f"Spread:{spread_match.group(1)}({spread_match.group(2)}%)")
+        
+        # Parse ML information
+        ml_match = ml_re.search(bet_details)
+        if ml_match:
+            game_dict['ml_odds'] = ml_match.group(1)
+            game_dict['ml_confidence'] = ml_match.group(2)
+            game_dict['all_recommendations'].append(f"ML:{ml_match.group(1)}({ml_match.group(2)}%)")
+        
+        # Parse OU information
+        ou_match = ou_re.search(bet_details)
+        if ou_match:
+            game_dict['ou_pick'] = ou_match.group(1)
+            game_dict['ou_value'] = ou_match.group(2)
+            game_dict['ou_confidence'] = ou_match.group(3)
+            game_dict['all_recommendations'].append(f"OU:{ou_match.group(1)} {ou_match.group(2)}({ou_match.group(3)}%)")
         
         # Extract EV data
         for ev_match in ev_re.finditer(stdout):
@@ -703,25 +744,20 @@ def parse_nba_predictions(stdout):
             if ev_match.group('team') == game_dict['home_team']:
                 game_dict['home_team_ev'] = ev_match.group('ev')
         
-        # Extract odds data
-        for odds_match in odds_re.finditer(stdout):
-            if odds_match.group('away_team') == game_dict['away_team']:
-                game_dict['away_team_odds'] = odds_match.group('away_team_odds')
-            if odds_match.group('home_team') == game_dict['home_team']:
-                game_dict['home_team_odds'] = odds_match.group('home_team_odds')
-
         # Create comprehensive recommended bet
         recommendations = []
         
-        # Add ML recommendation if confidence is high
-        if game_dict['away_confidence'] and float(game_dict['away_confidence']) > 55:
-            recommendations.append(f"{away_team} ML ({game_dict['away_confidence']}%)")
-        elif game_dict['home_confidence'] and float(game_dict['home_confidence']) > 55:
-            recommendations.append(f"{home_team} ML ({game_dict['home_confidence']}%)")
+        # Add spread recommendation if available
+        if game_dict['spread_value'] and game_dict['spread_confidence']:
+            recommendations.append(f"Spread:{game_dict['spread_value']}({game_dict['spread_confidence']}%)")
         
-        # Add OU recommendation
-        if game_dict['ou_pick'] and game_dict['ou_confidence']:
-            recommendations.append(f"{game_dict['ou_pick']} {game_dict['ou_value']} ({game_dict['ou_confidence']}%)")
+        # Add ML recommendation if available
+        if game_dict['ml_odds'] and game_dict['ml_confidence']:
+            recommendations.append(f"ML:{game_dict['ml_odds']}({game_dict['ml_confidence']}%)")
+        
+        # Add OU recommendation if available
+        if game_dict['ou_pick'] and game_dict['ou_value'] and game_dict['ou_confidence']:
+            recommendations.append(f"OU:{game_dict['ou_pick']} {game_dict['ou_value']}({game_dict['ou_confidence']}%)")
         
         # Add EV-based recommendation
         if game_dict['away_team_ev'] and float(game_dict['away_team_ev']) > 0.05:
@@ -734,32 +770,34 @@ def parse_nba_predictions(stdout):
         main_confidence = "0"
         
         if recommendations:
-            main_recommendation = recommendations[0]
+            main_recommendation = ", ".join(recommendations)
+            # Use the highest confidence available
+            confidences = []
+            if game_dict['spread_confidence']:
+                confidences.append(float(game_dict['spread_confidence']))
+            if game_dict['ml_confidence']:
+                confidences.append(float(game_dict['ml_confidence']))
             if game_dict['ou_confidence']:
-                main_confidence = game_dict['ou_confidence']
-            elif game_dict['away_confidence']:
-                main_confidence = game_dict['away_confidence']
-            elif game_dict['home_confidence']:
-                main_confidence = game_dict['home_confidence']
+                confidences.append(float(game_dict['ou_confidence']))
+            
+            if confidences:
+                main_confidence = str(max(confidences))
         
-        # Format the recommended bet with only spread value
-        spread_value = 'N/A'  # NBA typically doesn't have spread values in this format
-        
+        # Format the recommended bet in the requested format
         if main_recommendation:
-            formatted_bet = main_recommendation
+            formatted_bet = f"{recommended_team}, {main_recommendation}"
         else:
-            formatted_bet = 'N/A'
+            formatted_bet = recommended_team
         
         # Add comprehensive summary
-        game_dict['raw_prediction'] = f"{away_team} vs {home_team}, recommended bet: {formatted_bet}, confidence: {main_confidence}%"
-        game_dict['recommended_bet'] = main_recommendation
+        game_dict['raw_prediction'] = f"{home_team} vs {away_team}, recommended bet: {formatted_bet}"
+        game_dict['recommended_bet'] = formatted_bet
         game_dict['confidence'] = f"{main_confidence}%"
-        game_dict['all_recommendations'] = recommendations
         
-        # Add spread information if available
+        # Add individual prediction components
         if game_dict.get('ou_pick') and game_dict.get('ou_value'):
             game_dict['ou_prediction'] = f"{game_dict['ou_pick']} {game_dict['ou_value']}"
-            game_dict['ou_confidence'] = f"{game_dict['ou_confidence']}%" if game_dict.get('ou_confidence') else None
+            game_dict['ou_confidence'] = f"{game_dict['ou_confidence']}%" if game_dict.get('ou_confidence') and not game_dict['ou_confidence'].endswith('%') else game_dict.get('ou_confidence')
 
         games[game_key] = game_dict
     
