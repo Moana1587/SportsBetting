@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime, timedelta
+import os
 import requests
 import time
 import toml
@@ -93,8 +94,26 @@ def get_team_stats_nba_api(config, max_retries=3, delay=2):
     return pd.DataFrame()
 
 def get_todays_nba_games():
-    """Fetch today's NBA games from ESPN API with retry logic"""
+    """Fetch today's NBA games (scheduled, in progress, or completed)"""
     today = datetime.now().strftime('%Y%m%d')
+    
+    # Try ESPN API first
+    games = get_todays_nba_games_espn(today)
+    if games:
+        return games
+    
+    # Fallback to NBA official API
+    print("ESPN API failed, trying NBA official API...")
+    games = get_todays_nba_games_nba_official(today)
+    if games:
+        return games
+    
+    # Final fallback to local schedule
+    print("All APIs failed, using local schedule...")
+    return get_todays_nba_games_local()
+
+def get_todays_nba_games_espn(today):
+    """Fetch today's NBA games from ESPN API with status filtering"""
     espn_games_url = f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={today}'
     
     max_retries = 3
@@ -110,18 +129,27 @@ def get_todays_nba_games():
             games = []
             if 'events' in data:
                 for event in data['events']:
-                    # Extract team information from competitors
-                    home_team = None
-                    away_team = None
+                    # Check game status - only include games that are in progress or completed
+                    game_status = event.get('status', {}).get('type', {}).get('name', '')
+                    game_state = event.get('status', {}).get('type', {}).get('state', '')
                     
-                    for competitor in event.get('competitions', [{}])[0].get('competitors', []):
-                        if competitor.get('homeAway') == 'home':
-                            home_team = competitor['team']['displayName']
-                        elif competitor.get('homeAway') == 'away':
-                            away_team = competitor['team']['displayName']
-                    
-                    if home_team and away_team:
-                        games.append([home_team, away_team])
+                    # Include all games for today (scheduled, in-progress, or completed)
+                    if game_status in ['STATUS_SCHEDULED', 'STATUS_IN_PROGRESS', 'STATUS_FINAL', 'STATUS_HALFTIME', 'STATUS_END_PERIOD'] or \
+                       game_state in ['pre', 'in', 'post']:
+                        
+                        # Extract team information from competitors
+                        home_team = None
+                        away_team = None
+                        
+                        for competitor in event.get('competitions', [{}])[0].get('competitors', []):
+                            if competitor.get('homeAway') == 'home':
+                                home_team = competitor['team']['displayName']
+                            elif competitor.get('homeAway') == 'away':
+                                away_team = competitor['team']['displayName']
+                        
+                        if home_team and away_team:
+                            games.append([home_team, away_team])
+                            print(f"Found {game_status} game: {away_team} @ {home_team}")
             
             print(f"Successfully fetched {len(games)} NBA games from ESPN API")
             return games
@@ -157,6 +185,97 @@ def get_todays_nba_games():
                 return []
     
     return []
+
+def get_todays_nba_games_nba_official(today):
+    """Fetch today's NBA games from NBA official API"""
+    nba_games_url = f'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2024/scores/00_todays_scores.json'
+    
+    max_retries = 3
+    delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Attempting to fetch NBA games from NBA official API (attempt {attempt + 1}/{max_retries})...")
+            response = requests.get(nba_games_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            games = []
+            if 'gs' in data and 'g' in data['gs']:
+                for game in data['gs']['g']:
+                    # Check if game is today (scheduled, in progress, or completed)
+                    game_date = game.get('gdte', '')
+                    game_status = game.get('stt', '')
+                    
+                    if game_date == today and game_status in ['0', '1', '2', '3']:  # 0=scheduled, 1=in progress, 2=final, 3=halftime
+                        home_team = game.get('h', {}).get('ta', '')
+                        away_team = game.get('v', {}).get('ta', '')
+                        
+                        if home_team and away_team:
+                            # Convert team abbreviations to full names
+                            home_team_full = convert_team_abbreviation_to_full_name(home_team)
+                            away_team_full = convert_team_abbreviation_to_full_name(away_team)
+                            
+                            if home_team_full and away_team_full:
+                                games.append([home_team_full, away_team_full])
+                                print(f"Found NBA official game: {away_team_full} @ {home_team_full}")
+            
+            print(f"Successfully fetched {len(games)} NBA games from NBA official API")
+            return games
+            
+        except Exception as e:
+            print(f"Error fetching NBA games from NBA official API on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                print("All attempts failed for NBA official API.")
+                return []
+    
+    return []
+
+def get_todays_nba_games_local():
+    """Get today's NBA games from local schedule file as fallback"""
+    try:
+        # Try to read from local schedule file
+        schedule_file = 'Data/nba-2024-UTC.csv'
+        if os.path.exists(schedule_file):
+            schedule_df = pd.read_csv(schedule_file, parse_dates=['Date'], date_format='%d/%m/%Y %H:%M')
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            # Filter for today's games
+            today_games = schedule_df[schedule_df['Date'].dt.date == datetime.now().date()]
+            
+            games = []
+            for _, row in today_games.iterrows():
+                home_team = row['Home Team']
+                away_team = row['Away Team']
+                games.append([home_team, away_team])
+                print(f"Found local schedule game: {away_team} @ {home_team}")
+            
+            print(f"Successfully loaded {len(games)} NBA games from local schedule")
+            return games
+        else:
+            print("No local schedule file found")
+            return []
+    except Exception as e:
+        print(f"Error reading local schedule: {e}")
+        return []
+
+def convert_team_abbreviation_to_full_name(abbrev):
+    """Convert NBA team abbreviation to full team name"""
+    team_mapping = {
+        'ATL': 'Atlanta Hawks', 'BOS': 'Boston Celtics', 'BKN': 'Brooklyn Nets', 'CHA': 'Charlotte Hornets',
+        'CHI': 'Chicago Bulls', 'CLE': 'Cleveland Cavaliers', 'DAL': 'Dallas Mavericks', 'DEN': 'Denver Nuggets',
+        'DET': 'Detroit Pistons', 'GSW': 'Golden State Warriors', 'HOU': 'Houston Rockets', 'IND': 'Indiana Pacers',
+        'LAC': 'LA Clippers', 'LAL': 'Los Angeles Lakers', 'MEM': 'Memphis Grizzlies', 'MIA': 'Miami Heat',
+        'MIL': 'Milwaukee Bucks', 'MIN': 'Minnesota Timberwolves', 'NOP': 'New Orleans Pelicans', 'NYK': 'New York Knicks',
+        'OKC': 'Oklahoma City Thunder', 'ORL': 'Orlando Magic', 'PHI': 'Philadelphia 76ers', 'PHX': 'Phoenix Suns',
+        'POR': 'Portland Trail Blazers', 'SAC': 'Sacramento Kings', 'SAS': 'San Antonio Spurs', 'TOR': 'Toronto Raptors',
+        'UTA': 'Utah Jazz', 'WAS': 'Washington Wizards'
+    }
+    return team_mapping.get(abbrev, abbrev)
 
 todays_games_url = 'http://data.nba.net/v2015/json/mobile_teams/nba/2025/scores/00_todays_scores.json'#'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2024/scores/00_todays_scores.json'
 
@@ -255,6 +374,11 @@ def main():
         if len(games) == 0:
             print("No NBA games found for today.")
             return
+        else:
+            print(f"Found {len(games)} NBA games for today:")
+            for i, game in enumerate(games, 1):
+                print(f"  {i}. {game[1]} @ {game[0]}")
+            print()
     # Get team statistics using nba_api
     print("Fetching team statistics using nba_api...")
     df = get_team_stats_nba_api(config)
