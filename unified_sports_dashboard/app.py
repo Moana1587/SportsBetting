@@ -638,7 +638,7 @@ def fetch_nba_predictions(ttl_hash=None):
     try:
         cmd = ["python", "main.py", "-xgb"]
         result = subprocess.run(cmd, cwd=PROJECT_PATHS['NBA'], 
-                              capture_output=True, text=True, timeout=20)
+                              capture_output=True, text=True, timeout=60)
         
         if result.returncode != 0:
             print(f"NBA command failed with return code {result.returncode}")
