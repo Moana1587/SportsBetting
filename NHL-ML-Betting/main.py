@@ -169,33 +169,6 @@ def map_espn_team_names(team_name):
     
     return espn_to_full_name.get(team_name, team_name)
 
-def get_fallback_games():
-    """Get fallback games when ESPN API is unavailable"""
-    print("Using fallback games due to API unavailability...")
-    
-    # Check if we have a saved schedule from a previous run
-    if os.path.exists("nhl_today_schedule.csv"):
-        try:
-            df = pd.read_csv("nhl_today_schedule.csv")
-            print(f"Using previously saved schedule with {len(df)} games")
-            return df
-        except Exception as e:
-            print(f"Could not load saved schedule: {e}")
-    
-    # Use default games as fallback
-    print("Using default example games")
-    fallback_games = [
-        {"away": "Toronto Maple Leafs", "home": "Boston Bruins", "start_local": "2024-01-15 19:00", "status": "Scheduled"},
-        {"away": "New York Islanders", "home": "New York Rangers", "start_local": "2024-01-15 20:00", "status": "Scheduled"},
-        {"away": "Edmonton Oilers", "home": "Calgary Flames", "start_local": "2024-01-15 22:00", "status": "Scheduled"}
-    ]
-    
-    df = pd.DataFrame(fallback_games)
-    print(f"Using {len(df)} fallback games:")
-    for _, game in df.iterrows():
-        print(f"   {game['away']} @ {game['home']} - {game['start_local']} ({game['status']})")
-    
-    return df
 
 def load_nhl_team_data():
     """Load NHL team data from the database"""
@@ -718,28 +691,17 @@ def main():
     print("NHL XGBoost Prediction System")
     print("=" * 50)
     
-    # Scrape today's NHL schedule or use fallback
-    if args.fallback:
-        print("Using fallback games (--fallback flag specified)...")
-        schedule_df = get_fallback_games()
-    else:
-        schedule_df = scrape_todays_nhl_schedule()
-        if schedule_df is None:
-            print("ESPN API unavailable, trying fallback options...")
-            schedule_df = get_fallback_games()
+    # Scrape today's NHL schedule
+    schedule_df = scrape_todays_nhl_schedule()
     
-    if schedule_df is None:
-        print("No games available. Exiting.")
+    if schedule_df is None or schedule_df.empty:
+        print("No NHL games scheduled for today.")
         return
     
     # Use all games for today, regardless of status
     print(f"Processing all {len(schedule_df)} games scheduled for today:")
     for _, game in schedule_df.iterrows():
         print(f"   {game['away']} @ {game['home']} - {game['start_local']} ({game['status']})")
-    
-    if schedule_df.empty:
-        print("No games found for today.")
-        return
     
     # Convert to games list format
     games = [(row['home'], row['away']) for _, row in schedule_df.iterrows()]
@@ -810,7 +772,6 @@ if __name__ == "__main__":
     parser.add_argument('-xgb', action='store_true', help='Run XGBoost Model predictions (default)')
     parser.add_argument('-A', action='store_true', help='Run all available models')
     parser.add_argument('-kc', action='store_true', help='Calculate Kelly Criterion bet sizing')
-    parser.add_argument('--fallback', action='store_true', help='Use fallback games instead of scraping NHL API')
     parser.add_argument('--ou', nargs='+', type=float, help='Specify Over/Under values for each game')
     parser.add_argument('--spread', nargs='+', type=float, help='Specify spread values for each game')
     parser.add_argument('--home-odds', nargs='+', type=int, help='Specify home team moneyline odds')
