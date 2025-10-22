@@ -310,7 +310,7 @@ def createTodaysGames(games, df, odds):
         else:
             # Use default values when no odds are provided and running non-interactively
             print(f"No odds provided for {home_team} vs {away_team}. Using default values.")
-            todays_games_uo.append(220.0)  # Default over/under line
+            todays_games_uo.append(220.0)  # Default over/under line (more realistic for modern NBA)
             home_team_odds.append(-110)    # Default home team odds
             away_team_odds.append(-110)    # Default away team odds
 

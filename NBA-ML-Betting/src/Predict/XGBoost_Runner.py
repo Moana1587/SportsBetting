@@ -64,6 +64,33 @@ if ml_classification_models:
 else:
     print("No ML classification model found. Using original ML model.")
 
+# Load the best OU value regression model
+xgb_ou_value = None
+ou_value_models = [f for f in os.listdir('Models') if f.startswith('XGBoost_OU_Value_') and f.endswith('.json')]
+if ou_value_models:
+    # Sort by MSE (lowest first) and take the best one
+    def extract_ou_mse(filename):
+        try:
+            # Split by '_' and find the MSE value
+            parts = filename.split('_')
+            for i, part in enumerate(parts):
+                if part == 'MSE':
+                    return float(parts[i-1])
+            return float('inf')  # If MSE not found, put at end
+        except:
+            return float('inf')
+    
+    best_ou_model = sorted(ou_value_models, key=extract_ou_mse)[0]
+    try:
+        xgb_ou_value = xgb.Booster()
+        xgb_ou_value.load_model(f'Models/{best_ou_model}')
+        print(f"Loaded OU value model: {best_ou_model}")
+    except Exception as e:
+        print(f"Warning: Could not load OU value model: {e}")
+        xgb_ou_value = None
+else:
+    print("No OU value model found. Only classification OU predictions will be shown.")
+
 
 def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team_odds, kelly_criterion):
     print("=" * 80)
@@ -103,6 +130,12 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
     if xgb_spread is not None:
         for row in data:
             spread_predictions_array.append(xgb_spread.predict(xgb.DMatrix(np.array([row]))))
+
+    # Get OU value predictions if model is available
+    ou_value_predictions_array = []
+    if xgb_ou_value is not None:
+        for row in data:
+            ou_value_predictions_array.append(xgb_ou_value.predict(xgb.DMatrix(np.array([row]))))
 
     # Display predictions for each game in the requested format
     count = 0
@@ -162,10 +195,26 @@ def xgb_runner(data, todays_games_uo, frame_ml, games, home_team_odds, away_team
             recommended_bets.append(f"ML:{ml_odds}({away_ml_prob:.1f}%)")
         
         # Over/Under recommendation (always show, regardless of confidence)
-        if ou_winner == 0:  # Under
-            recommended_bets.append(f"OU:UNDER {ou_line}({under_prob:.1f}%)")
-        else:  # Over
-            recommended_bets.append(f"OU:OVER {ou_line}({over_prob:.1f}%)")
+        # Removed traditional OU classification - using OU value prediction instead
+        
+        # OU Value prediction (renamed to just "OU")
+        if xgb_ou_value is not None and len(ou_value_predictions_array) > count:
+            ou_value_prediction = ou_value_predictions_array[count][0]
+            
+            # Calculate confidence based on how far the prediction is from the line
+            # The further the prediction is from the line, the higher the confidence
+            difference = abs(ou_value_prediction - ou_line)
+            
+            # Convert difference to confidence percentage (0-100%)
+            # Use a sigmoid-like function to map difference to confidence
+            # Typical NBA OU lines range from ~180-250, so differences of 10+ points are significant
+            max_difference = 20.0  # Maximum expected difference for 100% confidence
+            confidence = min(95.0, max(50.0, 50.0 + (difference / max_difference) * 45.0))
+            
+            if ou_value_prediction > ou_line:
+                recommended_bets.append(f"OU:OVER {ou_value_prediction:.1f}({confidence:.1f}%)")
+            else:
+                recommended_bets.append(f"OU:UNDER {ou_value_prediction:.1f}({confidence:.1f}%)")
         
         # Print the result in the requested format
         if recommended_team and recommended_bets:
