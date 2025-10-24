@@ -6,6 +6,7 @@ import subprocess
 import re
 import time
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, jsonify, Response
 import csv
 import io
@@ -1569,44 +1570,55 @@ def get_ttl_hash(seconds=600):
     """Return the same value within `seconds` time period"""
     return round(time.time() / seconds)
 
+def fetch_all_predictions_parallel(ttl_hash):
+    """Fetch all sports predictions in parallel for faster loading"""
+    predictions = {
+        'CFB': {},
+        'MLB': {},
+        'NBA': {},
+        'NFL': {},
+        'NHL': {}
+    }
+    
+    # Define fetch functions for each sport
+    fetch_functions = {
+        'CFB': lambda: fetch_cfb_predictions(ttl_hash=ttl_hash),
+        'MLB': lambda: fetch_mlb_predictions(ttl_hash=ttl_hash),
+        'NBA': lambda: fetch_nba_predictions(ttl_hash=ttl_hash),
+        'NFL': lambda: fetch_nfl_predictions(ttl_hash=ttl_hash),
+        'NHL': lambda: fetch_nhl_predictions(ttl_hash=ttl_hash)
+    }
+    
+    # Use ThreadPoolExecutor to fetch all predictions concurrently
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        # Submit all tasks
+        future_to_sport = {
+            executor.submit(fetch_func): sport 
+            for sport, fetch_func in fetch_functions.items()
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_sport):
+            sport = future_to_sport[future]
+            try:
+                result = future.result()
+                if result:
+                    predictions[sport] = result
+                else:
+                    print(f"No {sport} games found")
+                    predictions[sport] = {}
+            except Exception as e:
+                print(f"Error fetching {sport} predictions: {e}")
+                predictions[sport] = {}
+    
+    return predictions
+
 @app.route("/")
 def index():
     """Main dashboard page showing all sports predictions"""
     try:
-        # Fetch predictions from all sports - no mock data fallback
-        cfb_predictions = fetch_cfb_predictions(ttl_hash=get_ttl_hash())
-        if not cfb_predictions:
-            print("No CFB games found")
-            cfb_predictions = {}
-            
-        mlb_predictions = fetch_mlb_predictions(ttl_hash=get_ttl_hash())
-        if not mlb_predictions:
-            print("No MLB games found")
-            mlb_predictions = {}
-            
-        nba_predictions = fetch_nba_predictions(ttl_hash=get_ttl_hash())
-        if not nba_predictions:
-            print("No NBA games found")
-            nba_predictions = {}
-            
-        nfl_predictions = fetch_nfl_predictions(ttl_hash=get_ttl_hash())
-        if not nfl_predictions:
-            print("No NFL games found")
-            nfl_predictions = {}
-            
-        nhl_predictions = fetch_nhl_predictions(ttl_hash=get_ttl_hash())
-        if not nhl_predictions:
-            print("No NHL games found")
-            nhl_predictions = {}
-        
-        # Combine all predictions
-        all_predictions = {
-            'CFB': cfb_predictions,
-            'MLB': mlb_predictions,
-            'NBA': nba_predictions,
-            'NFL': nfl_predictions,
-            'NHL': nhl_predictions
-        }
+        # Fetch predictions from all sports in parallel for faster loading
+        all_predictions = fetch_all_predictions_parallel(ttl_hash=get_ttl_hash())
         
         return render_template('index.html', 
                             today=date.today(), 
@@ -1619,13 +1631,7 @@ def index():
 def api_predictions():
     """API endpoint to get all predictions as JSON"""
     try:
-        predictions = {
-            'CFB': fetch_cfb_predictions(ttl_hash=get_ttl_hash()) or {},
-            'MLB': fetch_mlb_predictions(ttl_hash=get_ttl_hash()) or {},
-            'NBA': fetch_nba_predictions(ttl_hash=get_ttl_hash()) or {},
-            'NFL': fetch_nfl_predictions(ttl_hash=get_ttl_hash()) or {},
-            'NHL': fetch_nhl_predictions(ttl_hash=get_ttl_hash()) or {}
-        }
+        predictions = fetch_all_predictions_parallel(ttl_hash=get_ttl_hash())
         return jsonify(predictions)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1656,13 +1662,7 @@ def api_sport_predictions(sport):
 def export_csv():
     """Export all predictions to CSV"""
     try:
-        predictions = {
-            'CFB': fetch_cfb_predictions(ttl_hash=get_ttl_hash()) or {},
-            'MLB': fetch_mlb_predictions(ttl_hash=get_ttl_hash()) or {},
-            'NBA': fetch_nba_predictions(ttl_hash=get_ttl_hash()) or {},
-            'NFL': fetch_nfl_predictions(ttl_hash=get_ttl_hash()) or {},
-            'NHL': fetch_nhl_predictions(ttl_hash=get_ttl_hash()) or {}
-        }
+        predictions = fetch_all_predictions_parallel(ttl_hash=get_ttl_hash())
         
         # Create CSV content
         output = io.StringIO()
